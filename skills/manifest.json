@@ -1,0 +1,52 @@
+{
+  "retrieved_on": "2026-10-28",
+  "method": "Primary sources fetched with web tool; complete numbered lines reconstructed; local hashes are not upstream git revision hashes.",
+  "scope": "Project-local instruction copies routed by AGENTS.md; standard discovery directories are read-only.",
+  "files": [
+    {
+      "path": "skills/audit-design-tokens/SKILL.md",
+      "source": "https://raw.githubusercontent.com/humbleteam/audit-design-tokens/main/SKILL.md",
+      "sha256": "e8b2de2fd78fbe964b6c70ccec858368b11b64d1532867fa5946ecfb127379d6"
+    },
+    {
+      "path": "skills/addyosmani/skills/frontend-ui-engineering/SKILL.md",
+      "source": "https://raw.githubusercontent.com/addyosmani/agent-skills/main/skills/frontend-ui-engineering/SKILL.md",
+      "sha256": "fc799b9257c9dc5f9e93e21c47b5a3bcfc4e62591e2b863dbfb9e6726d7d6d91"
+    },
+    {
+      "path": "skills/addyosmani/references/accessibility-checklist.md",
+      "source": "https://raw.githubusercontent.com/addyosmani/agent-skills/main/references/accessibility-checklist.md",
+      "sha256": "59f0680a8f85a952cc600dd821b14bd2e225c88a0226c9eaefea25b2c42fc69b"
+    },
+    {
+      "path": "skills/addyosmani/LICENSE",
+      "source": "https://raw.githubusercontent.com/addyosmani/agent-skills/main/LICENSE",
+      "sha256": "40a53c27bce66a06f003369e3400d24ca1b5f2c5e6fd09f99e070519f10cc0ba"
+    },
+    {
+      "path": "skills/product-design/skills/design-qa/SKILL.md",
+      "source": "https://raw.githubusercontent.com/openai/plugins/main/plugins/product-design/skills/design-qa/SKILL.md",
+      "sha256": "b29b3d383d6395d646c3fca9333107a28245110a846a25fc97ba52b249bf5515"
+    },
+    {
+      "path": "skills/product-design/skills/design-qa/references/qa-rubric.md",
+      "source": "https://raw.githubusercontent.com/openai/plugins/main/plugins/product-design/skills/design-qa/references/qa-rubric.md",
+      "sha256": "c944cd03e98df02d10b7fc8df926402181a9c7a301293a8b17e77e3fbab02676"
+    },
+    {
+      "path": "skills/product-design/references/critical-overrides.md",
+      "source": "https://raw.githubusercontent.com/openai/plugins/main/plugins/product-design/references/critical-overrides.md",
+      "sha256": "6697b0acc26037d7c6b45fb8242a896618e489581deec94330068253e1b83cbd"
+    },
+    {
+      "path": "skills/product-design/references/communication-protocol.md",
+      "source": "https://raw.githubusercontent.com/openai/plugins/main/plugins/product-design/references/communication-protocol.md",
+      "sha256": "84f63742e009734bec47a666fae6f6462b3be9c7c8face215d3bfd107e818bd3"
+    },
+    {
+      "path": "skills/product-design/skills/index/SKILL.md",
+      "source": "https://raw.githubusercontent.com/openai/plugins/main/plugins/product-design/skills/index/SKILL.md",
+      "sha256": "48b20a93c48c9f2a9f8cf2b2bb27e04bdc1b88ca2311558e50999c951fbf8507"
+    }
+  ]
+}
