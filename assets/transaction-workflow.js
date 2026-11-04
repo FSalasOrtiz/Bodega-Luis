@@ -1,12 +1,13 @@
 /* Local transaction workflow. All tax/payment gateways are deliberately disconnected. */
 let checkoutDraft=null,checkoutBusy=false;
 function ensureWorkflowState(){
-  for(const key of ['operations','refunds','adjustments','fiscalEvents'])S[key]??=[];
+  for(const key of ['operations','refunds','adjustments','fiscalEvents','clients','creditPayments','creditRequests','priceRequests'])S[key]??=[];
   S.workflowRevision??=0;S.workflowSchema=1;
 }
 function workflowAdmin(){if(!me||!me.activo||me.rol!=='admin')throw new Error('Esta acción requiere administrador.');}
 function workflowUser(){if(!me||!me.activo)throw new Error('La sesión no está activa.');}
 function workflowTransaction(action){
+  if(me&&me.rol==='contador')throw new Error('Tu perfil es de solo lectura.');
   ensureWorkflowState();const before=JSON.stringify(S);
   try{
     const persisted=localStorage.getItem(KEY);
@@ -41,16 +42,16 @@ function fiscalStatus(s){
   return 'Documento pendiente';
 }
 function paymentPlan(draft,total){
-  const allowed=['efectivo','transferencia','tarjeta'];
+  const allowed=['efectivo','transferencia','tarjeta','credito'];
   let parts=draft.payments;
   if(!parts){
-    if(draft.pago==='mixto')parts=[{medio:'efectivo',monto:Number(draft.pagoEf)},{medio:draft.mixedSecond||'transferencia',monto:total-Number(draft.pagoEf)}];
+    // mixto: dos medios cualesquiera (no tiene que ser efectivo); pagoEf es lo que va en el primero
+    if(draft.pago==='mixto')parts=[{medio:draft.mixFirst||'efectivo',monto:Number(draft.pagoEf)},{medio:draft.mixedSecond||'transferencia',monto:total-Number(draft.pagoEf)}];
     else parts=[{medio:draft.pago,monto:total}];
   }
-  parts=parts.map((p,i)=>({id:'p'+i,medio:p.medio,monto:Number(p.monto),reference:String(p.reference??draft.paymentRefs?.[p.medio]??'').trim(),voucherTax:!!p.voucherTax}));
+  parts=parts.map((p,i)=>({id:'p'+i,medio:p.medio,monto:Number(p.monto),reference:String(p.reference??'').trim(),voucherTax:!!p.voucherTax}));
   if(!parts.length||parts.some(p=>!allowed.includes(p.medio)||!Number.isSafeInteger(p.monto)||p.monto<=0)||parts.reduce((n,p)=>n+p.monto,0)!==total)throw new Error('Revisa los componentes del pago: deben sumar exactamente el total.');
   if(new Set(parts.map(p=>p.medio)).size!==parts.length)throw new Error('Los medios del pago mixto deben ser distintos.');
-  if(parts.some(p=>p.medio==='tarjeta'&&!p.reference))throw new Error('Registra la referencia de cada pago aprobado por el terminal.');
   return parts;
 }
 function fiscalPlan(s,payments,config){
@@ -70,15 +71,33 @@ function queueFiscalIntent(s,doc,kind='emitir'){
 }
 function registerSaleCommand(draft){
   workflowUser();if(!draft?.key)throw new Error('Confirmación de venta no válida.');
-  const fingerprint=JSON.stringify({user:draft.user,items:draft.items,documento:draft.documento,receptor:draft.receptor,payments:draft.payments});
+  const fingerprint=JSON.stringify({user:draft.user,items:draft.items,documento:draft.documento,receptor:draft.receptor,payments:draft.payments,clienteNombre:draft.clienteNombre||'',creditReq:draft.creditReq||''});
   const old=S.sales.find(s=>s.commandKey===draft.key);
   if(old){if(old.commandFingerprint!==fingerprint||old.vendedor!==me.id)throw new Error('La clave de operación ya corresponde a otra venta.');return old;}
   if(draft.user!==me.id||draft.paymentConfirmed!==true)throw new Error('Confirma primero que recibiste el pago.');
-  if(!draft.items?.length||draft.items.some(i=>!P(i.prod)||P(i.prod).precio!==i.precio))throw new Error('Los productos o precios cambiaron. Vuelve a revisar la venta.');
+  if(!draft.items?.length||draft.items.some(i=>!P(i.prod)||!i.precioEsp&&P(i.prod).precio!==i.precio))throw new Error('Los productos o precios cambiaron. Vuelve a revisar la venta.');
+  // precio especial: el admin lo pone directo; un vendedor necesita la autorización de Luis para ese producto, cantidad y precio
+  const especiales=draft.items.filter(i=>i.precioEsp).map(i=>{
+    if(P(i.prod).envase||!Number.isSafeInteger(i.precio)||i.precio<=0)throw new Error('Precio especial no válido.');
+    if(me.rol==='admin')return null;
+    const r=priceReq(i.priceReq);if(!priceRequestMatches(r,i,me.id)||r.precio!==i.precio)throw new Error('El precio especial necesita la autorización de Luis.');return r;}).filter(Boolean);
   return workflowTransaction(()=>{
-    const requestedPayments=paymentPlan(draft,draft.items.reduce((n,i)=>n+lineTotal(P(i.prod),i.qty),0));
-    if(requestedPayments.some(p=>p.medio==='tarjeta'&&S.sales.some(s=>s.pagos.some(old=>old.medio==='tarjeta'&&old.reference===p.reference))))throw new Error('Esa referencia del terminal ya fue usada en otra venta.');
-    const s=makeSale({...draft,vendedor:me.id,pago:'efectivo',silent:true});
+    const total=draft.items.reduce((n,i)=>n+itemTotal(i),0),requestedPayments=paymentPlan(draft,total);
+    // el punto de venta ya no pide referencia; si una integración la envía, no puede repetirse
+    if(requestedPayments.some(p=>p.medio==='tarjeta'&&p.reference&&S.sales.some(s=>s.pagos.some(old=>old.medio==='tarjeta'&&old.reference===p.reference))))throw new Error('Esa referencia del terminal ya fue usada en otra venta.');
+    // crédito: el admin fía directo; un vendedor necesita una autorización aprobada por el admin para este cliente, monto y total
+    const fiado=requestedPayments.filter(p=>p.medio==='credito').reduce((n,p)=>n+p.monto,0),nombre=String(draft.clienteNombre||'').trim();
+    let cliente='',autorizacion=null;
+    if(fiado){
+      if(!nombre)throw new Error('Escribe el nombre del cliente que pide el crédito.');
+      if(me.rol!=='admin'){autorizacion=creditReq(draft.creditReq);if(!creditRequestMatches(autorizacion,{user:me.id,nombre,monto:fiado,total}))throw new Error('El crédito necesita la autorización de Luis.');}
+      cliente=resolveClient(nombre);
+    }
+    const s=makeSale({...draft,vendedor:me.id,pago:'efectivo',cliente,silent:true});
+    if(autorizacion){autorizacion.estado='usada';autorizacion.saleId=s.id;s.creditoAutorizadoPor=autorizacion.resueltoPor}
+    especiales.forEach(r=>{const live=priceReq(r.id);live.estado='usada';live.saleId=s.id;const ln=s.lineas.find(l=>l.prod===live.prod&&l.precio===live.precio&&!l.precioAutorizadoPor);if(ln)ln.precioAutorizadoPor=live.resueltoPor});
+    s.lineas.filter(l=>l.precioNormal&&!l.precioAutorizadoPor).forEach(l=>{l.precioAutorizadoPor=me.id});
+    s.lineas.filter(l=>l.precioNormal).forEach(l=>audit('Venta con precio especial',P(l.prod).nombre+' · N° '+s.num,clp(l.precioNormal),clp(l.precio)));
     s.pagos=paymentPlan(draft,s.total).map(p=>({...p,state:'confirmado_manual',confirmedAt:now()}));
     s.workflowVersion=1;s.saleState='registrada';s.paymentState='confirmado_manual';s.commandKey=draft.key;s.commandFingerprint=fingerprint;
     s.modelSnapshot={modeloBoleta:S.cfg.modeloBoleta||'sin_definir',modeloReferencia:S.cfg.modeloReferencia||'',operadorTarjeta:S.cfg.operadorTarjeta||''};
@@ -91,25 +110,34 @@ function registerSaleCommand(draft){
   });
 }
 function checkoutItems(){
-  const items=ui.cart.map(c=>({prod:c.prod,qty:c.qty,precio:P(c.prod)?.precio}));
-  const gamelas=cartQty(gamId());if(gamelas)items.push({prod:gamId(),qty:gamelas,precio:gamProd().precio});return items;
+  // precio especial (autorizado por Luis o puesto por el admin): la línea lleva el precio y la solicitud que lo respalda
+  const items=ui.cart.map(c=>{const precio=cartPrice(c),esp=precio!==P(c.prod)?.precio;return {prod:c.prod,qty:c.qty,precio,...(esp?{precioEsp:true,priceReq:c.priceReq||''}:{})}});
+  const g=gamCalc();if(g.net)items.push({prod:gamId(),qty:g.net,precio:gamProd().precio});return items;
 }
 function prepareCheckout(){
   try{
-    workflowUser();if(checkoutBusy||!ui.cart.length)return;
-    const items=checkoutItems();const total=items.reduce((n,i)=>n+lineTotal(P(i.prod),i.qty),0);
+    workflowUser();const g=gamCalc();if(checkoutBusy||!ui.cart.length&&g.net<=0)return;
+    if(ui.cart.some(c=>priceReq(c.priceReq)?.estado==='pendiente'))throw new Error('Hay un precio esperando la autorización de Luis.');
+    const items=checkoutItems();const total=items.reduce((n,i)=>n+itemTotal(i),0);
+    const gErr=gamError(g,total-g.monto);if(gErr)throw new Error(gErr);
     const documento=ui.documento||'boleta';if(documento==='factura'){const error=invoiceRecipientError(ui.receptor);if(error)throw new Error(error);}
-    const payments=paymentPlan({pago:ui.pago,pagoEf:ui.pagoEf,mixedSecond:ui.mixedSecond,paymentRefs:ui.paymentRefs},total);
-    payments.forEach(p=>{p.voucherTax=!!ui.voucherTax&&p.medio==='tarjeta'});
-    checkoutDraft={key:'venta:'+uid('checkout')+':'+now(),user:me.id,items,documento,receptor:documento==='factura'?{...ui.receptor}:null,payments,total,paymentConfirmed:false};
+    const credit=creditPlan(total),rest=total-(credit?.monto||0);
+    const payments=rest>0?paymentPlan({pago:ui.pago,pagoEf:ui.pagoEf,...(ui.pago==='mixto'?(([mixFirst,mixedSecond])=>({mixFirst,mixedSecond}))(mixedPair()):{})},rest):[];
+    if(credit){
+      if(!isAdmin()){const r=creditReq(ui.creditReq);if(!creditRequestMatches(r,{user:me.id,nombre:credit.nombre,monto:credit.monto,total}))throw new Error(r?.estado==='pendiente'?'El crédito está esperando la autorización de Luis.':'Pide a Luis que autorice el crédito.');}
+      payments.push({id:'p'+payments.length,medio:'credito',monto:credit.monto,reference:'',voucherTax:false});
+    }
+    const fiado=credit?payments[payments.length-1]:null,known=credit?findClientByName(credit.nombre):null;
+    checkoutDraft={key:'venta:'+uid('checkout')+':'+now(),user:me.id,items,documento,receptor:documento==='factura'?{...ui.receptor}:null,payments,total,gamelas:g.lleva||g.trae?{lleva:g.lleva,trae:g.trae}:null,clienteNombre:credit?.nombre||'',creditReq:credit&&!isAdmin()?ui.creditReq:'',paymentConfirmed:false};
     modal(`<h2>Revisar y confirmar venta</h2><p class="muted">Todavía no se ha registrado la venta ni se ha descontado stock.</p>
-      <div class="scroll"><table class="tbl"><thead><tr><th>Producto</th><th>Cantidad</th><th class="right">Importe</th></tr></thead><tbody>${items.map(i=>`<tr><td>${esc(P(i.prod).nombre)}</td><td>${qtyFmt(i.qty,P(i.prod).unidad)}</td><td class="right num">${clp(lineTotal(P(i.prod),i.qty))}</td></tr>`).join('')}</tbody></table></div>
-      <p><b>Documento:</b> ${documento==='factura'?'Factura · '+esc(ui.receptor.razonSocial):'Boleta'}</p>
-      ${payments.map(p=>`<p>${receiptPayment(p.medio)}: <b>${clp(p.monto)}</b>${p.reference?' · Ref. '+esc(p.reference):''}</p>`).join('')}
+      <div class="scroll"><table class="tbl"><thead><tr><th>Producto</th><th>Cantidad</th><th class="right">Importe</th></tr></thead><tbody>${items.map(i=>`<tr><td>${esc(lineName(i))}</td><td>${qtyFmt(i.qty,P(i.prod).unidad)} × ${clp(i.precio)}</td><td class="right num">${clp(itemTotal(i))}</td></tr>`).join('')}</tbody></table></div>
+      ${g.lleva||g.trae?`<p><b>Gamelas:</b> se lleva ${g.lleva}, trae ${g.trae} → ${g.net>0?'se cobran '+g.net:g.net<0?'se descuentan '+(-g.net):'sin cobro'}</p>`:''}
+      <p><b>Documento:</b> ${documento==='factura'?'Factura · '+esc(ui.receptor.razonSocial)+' · RUT '+esc(ui.receptor.rut)+' (la emite la contadora)':'Boleta'}</p>
+      ${payments.map(p=>`<p>${receiptPayment(p.medio)}${p.medio==='credito'?' · '+esc(credit.nombre):''}: <b>${clp(p.monto)}</b>${p.reference?' · Ref. '+esc(p.reference):''}</p>`).join('')}
+      ${fiado?`<p class="muted">El crédito no entra a la caja: queda anotado a ${esc(credit.nombre)}${known?'':' (cliente nuevo)'}, que pasa a deber ${clp((known?creditBalance(known.id):0)+fiado.monto)}.</p>`:''}
       <div class="total"><span>Total</span><span>${clp(total)}</span></div>
-      <label class="gamchk"><input id="checkout-paid" type="checkbox"><span>Confirmo que recibí y verifiqué todos los pagos indicados.</span></label>
-      <p class="muted">Sin API activa: el documento queda pendiente. Esta acción no realiza un cobro bancario.</p>
-      <div class="acts"><button class="btn ghost" onclick="cancelCheckout()">Volver y corregir</button><button class="btn pri" id="checkout-submit" onclick="commitCheckout('${checkoutDraft.key}')">Registrar venta y preparar documento</button></div>`);
+      <label class="gamchk"><input id="checkout-paid" type="checkbox"><span>${fiado?(rest?'Confirmo que recibí lo que paga ahora y que el resto queda a crédito.':'Confirmo que todo queda a crédito.'):'Confirmo que recibí y verifiqué todos los pagos indicados.'}</span></label>
+      <div class="acts"><button class="btn ghost" onclick="cancelCheckout()">Volver y corregir</button><button class="btn pri" id="checkout-submit" onclick="commitCheckout('${checkoutDraft.key}')">Registrar venta</button></div>`);
   }catch(error){toast(error.message)}
 }
 function cancelCheckout(){if(checkoutBusy)return;checkoutDraft=null;closeModal();}
@@ -121,7 +149,7 @@ function commitCheckout(key){
   checkoutBusy=true;const button=document.querySelector('#checkout-submit');if(button)button.disabled=true;
   try{
     const s=registerSaleCommand({...checkoutDraft,paymentConfirmed:true});checkoutDraft=null;
-    ui.cart=[];ui.pago='efectivo';ui.pagoEf=0;ui.documento='boleta';ui.receptor={};ui.paymentRefs={};ui.voucherTax=false;
+    ui.cart=[];ui.pago='efectivo';ui.pagoEf=0;ui.documento='boleta';ui.receptor={};ui.mixFirst='efectivo';ui.mixedSecond='transferencia';ui.credito=false;ui.creditoPaga=0;ui.clienteNombre='';ui.creditReq='';ui.gamExtra=0;ui.gamTrae=0;
     closeModal();render();receipt(s.id);
   }catch(error){toast(error.message)}finally{checkoutBusy=false;if(button?.isConnected)button.disabled=false;}
 }
@@ -141,10 +169,13 @@ function moneyEntries(){
   ensureWorkflowState();const result=[];
   S.sales.filter(activeFinancialSale).forEach(s=>s.pagos.forEach(p=>result.push({saleId:s.id,user:s.vendedor,fecha:s.fecha,medio:p.medio,monto:p.monto})));
   S.refunds.filter(r=>r.state==='confirmada_manual').forEach(r=>result.push({saleId:r.saleId,user:r.confirmedBy,fecha:r.confirmedAt,medio:r.medio,monto:-r.amount}));
+  // abonos de créditos: plata que entra a la caja de quien lo recibe, el día que se paga
+  (S.creditPayments||[]).filter(a=>!a.anulado).forEach(a=>result.push({saleId:'',abono:a.id,user:a.user,fecha:a.fecha,medio:a.medio,monto:a.monto}));
   return result;
 }
 function initializeRefunds(s,reversal){
-  s.pagos.filter(p=>p.monto>0).forEach((p,i)=>{
+  // lo fiado no se devuelve en dinero: al revertir, simplemente deja de contarse como deuda
+  s.pagos.filter(p=>p.monto>0&&p.medio!=='credito').forEach((p,i)=>{
     const key=reversal.id+':devolucion:'+i;
     if(!S.refunds.some(r=>r.idempotencyKey===key))S.refunds.push({id:key,idempotencyKey:key,saleId:s.id,medio:p.medio,amount:p.monto,state:p.medio==='tarjeta'?'pendiente_operador':'pendiente_confirmacion',originalReference:p.reference||'',createdAt:now()});
   });
@@ -192,7 +223,7 @@ function reverseSaleCommand(id,reason,returnStock){
 }
 function requestReversalCommand(id,reason){
   workflowUser();reason=String(reason||'').trim();if(!reason)throw new Error('El motivo es obligatorio.');
-  return workflowTransaction(()=>{const s=workflowSale(id);if(s.vendedor!==me.id&&!isAdmin())throw new Error('Solo puedes solicitar la reversión de tus ventas.');if(!vig(s)||s.reversal)throw new Error('Esta venta ya tiene una reversión.');s.solicitud=reason;workflowEvent(s,'solicitud_vendedor',reason);return s;});
+  return workflowTransaction(()=>{const s=workflowSale(id);if(s.vendedor!==me.id&&!isAdmin())throw new Error('Solo puedes solicitar la reversión de tus ventas.');if(!vig(s)||s.reversal)throw new Error('Esta venta ya tiene una reversión.');s.solicitud=reason;s.solicitudFecha=now();workflowEvent(s,'solicitud_vendedor',reason);return s;});
 }
 function confirmRefundCommand(id,reference){
   workflowAdmin();reference=String(reference||'').trim();if(!reference)throw new Error('Registra una referencia o comprobante de la devolución efectiva.');
@@ -264,33 +295,18 @@ function prepareFiscalCommand(id){
 function rejectReversalRequest(id,reason){workflowAdmin();return workflowTransaction(()=>{const s=workflowSale(id);if(!s.solicitud)throw new Error('No hay solicitud pendiente.');if(!String(reason).trim())throw new Error('El motivo es obligatorio.');workflowEvent(s,'solicitud_rechazada',reason+' · Solicitud: '+s.solicitud);s.solicitud='';return s;});}
 function workflowRefundDialog(id){
   const r=S.refunds?.find(r=>r.id===id);if(!r)return;
-  askReason('Conciliar devolución '+receiptPayment(r.medio),`Confirma solo después de devolver ${clp(r.amount)}. ${r.medio==='tarjeta'?'Exige comprobante de reversa o devolución del operador; anular la venta no devuelve el dinero.':'Registra la referencia de la salida de caja o transferencia.'} Es una conciliación manual, sin consulta bancaria.`,ref=>{
-    try{confirmRefundCommand(id,ref);closeModal();render();toast('Devolución conciliada manualmente.')}catch(e){toast(e.message)}
+  askReason('Devolución en '+receiptPayment(r.medio).toLowerCase(),`Confirma solo después de devolver ${clp(r.amount)} al cliente. Anota cómo se devolvió.`,ref=>{
+    try{confirmRefundCommand(id,ref);closeModal();render();toast('Devolución confirmada.')}catch(e){toast(e.message)}
   });
 }
 function workflowFiscalPrepare(id){try{prepareFiscalCommand(id);render();toast('Solicitud preparada. Integración desconectada: no se ha emitido ningún documento.')}catch(e){toast(e.message)}}
 function workflowDetail(id){
   const s=workflowSale(id),refunds=(S.refunds||[]).filter(r=>r.saleId===id);
-  modal(`<h2>Control de venta ${s.num}</h2><p><b>Venta:</b> ${esc(workflowLabel(s.saleState||s.estado))} · <b>Pago:</b> ${esc(workflowLabel(s.paymentState||'histórico sin verificar'))}</p><p><b>Tributario:</b> ${esc(fiscalStatus(s))}</p>
-    ${(s.fiscalDocs||[]).map(d=>`<p>${esc(d.kind)} · ${clp(d.amount)} · ${esc(workflowLabel(d.state))}${d.reference?' · Ref. '+esc(d.reference):''}${d.original?' · DTE '+esc(d.original.tipo)+' / '+esc(d.original.folio):''}</p>`).join('')}
-    ${s.reversal?`<p><b>Reversión:</b> ${esc(workflowLabel(s.reversal.state))} · ${esc(s.reversal.reason)} · Stock: ${s.reversal.returnStock?'reintegro solicitado':'sin reintegro'}</p>`:''}
-    ${(s.reversal?.creditNotes||[]).map(n=>`<p>Nota de crédito: ${esc(workflowLabel(n.state))} · referencia ${esc(n.original.tipo)} / ${esc(n.original.folio)}</p>`).join('')}
-    <h3>Devoluciones</h3>${refunds.map(r=>`<p>${receiptPayment(r.medio)} · ${clp(r.amount)} · ${esc(workflowLabel(r.state))}${r.reference?' · '+esc(r.reference):''} ${r.state!=='confirmada_manual'?`<button class="btn sm" onclick="workflowRefundDialog('${r.id}')">Conciliar devolución efectiva</button>`:''}</p>`).join('')||'<p class="muted">No hay devoluciones solicitadas.</p>'}
+  modal(`<h2>Venta N° ${s.num}</h2><p><b>Venta:</b> ${esc(workflowLabel(s.saleState||s.estado))}</p>
+    ${s.reversal?`<p><b>Anulación:</b> ${esc(s.reversal.reason)} · Stock: ${s.reversal.returnStock?'devuelto a la bodega':'sin devolver'}</p>`:''}
+    <h3>Devoluciones de dinero</h3>${refunds.map(r=>`<p>${receiptPayment(r.medio)} · ${clp(r.amount)} · ${esc(workflowLabel(r.state))}${r.reference?' · '+esc(r.reference):''} ${r.state!=='confirmada_manual'?`<button class="btn sm" onclick="workflowRefundDialog('${r.id}')">Confirmar devolución</button>`:''}</p>`).join('')||'<p class="muted">No hay devoluciones solicitadas.</p>'}
     <h3>Historial</h3><div class="rows">${(s.workflowEvents||[]).map(e=>`<div><div class="grow"><b>${esc(e.type)}</b><span>${fdt(e.at)} · ${esc(U(e.user).nombre)} · ${esc(e.detail)}</span></div></div>`).join('')||'<p>Sin eventos nuevos.</p>'}</div>
     <div class="acts"><button class="btn ghost" onclick="closeModal()">Cerrar</button></div>`,true);
-}
-let workflowFilter='todos',workflowPage=0;
-function viewFiscalControl(){
-  if(!isAdmin())return head('Acceso restringido','Este control requiere administrador.');
-  ensureWorkflowState();
-  const q=searchText(ui.q||'');
-  const all=[...S.sales].sort((a,b)=>b.fecha-a.fecha),filtered=all.filter(s=>!q||searchText(String(s.num)+' '+(s.comprobante?.receptor?.razonSocial||'')).includes(q)).filter(s=>workflowFilter==='todos'||workflowFilter==='solicitudes'&&s.solicitud||workflowFilter==='anuladas'&&!vig(s)||workflowFilter==='documentadas'&&fiscalStatus(s)==='Documentada'||workflowFilter==='pendientes'&&needsFiscalReconciliation(s)||workflowFilter==='errores'&&(s.fiscalDocs||[]).some(d=>['error','desconocido','pendiente_conciliacion','sin_verificar'].includes(d.state))||workflowFilter==='devoluciones'&&S.refunds.some(r=>r.saleId===s.id&&r.state!=='confirmada_manual'));
-  workflowPage=Math.max(0,Math.min(workflowPage,Math.ceil(filtered.length/50)-1));
-  return head('Control tributario y reversiones','Emisión, cobro y devolución son estados independientes. Control local de este navegador; sin servicios conectados.')+
-    `<div class="card"><div class="tabs">${['todos','pendientes','documentadas','anuladas','solicitudes','errores','devoluciones'].map(f=>`<button class="btn sm ${workflowFilter===f?'pri':'ghost'}" onclick="workflowFilter='${f}';workflowPage=0;render()">${f.charAt(0).toUpperCase()+f.slice(1)}</button>`).join('')}</div>
-    <div class="f"><label>Buscar operación</label><input class="in" placeholder="Buscar número de venta o cliente" value="${esc(ui.q||'')}" oninput="ui.q=this.value;workflowPage=0;render(true)"></div><p class="muted">${filtered.length} operaciones. Las solicitudes se preparan al vender; el cierre no dispara emisiones. Los históricos no se suponen documentados.</p>
-    <div class="scroll"><table class="tbl"><thead><tr><th>Venta</th><th>Comercial</th><th>Pago</th><th>Tributario</th><th>Acciones</th></tr></thead><tbody>${filtered.slice(workflowPage*50,(workflowPage+1)*50).map(s=>`<tr><td>${s.num}<br>${clp(s.total)}</td><td>${esc(workflowLabel(s.saleState||s.estado))}${s.solicitud?'<br>Solicitud: '+esc(s.solicitud):''}</td><td>${esc(workflowLabel(s.paymentState||'histórico sin verificar'))}</td><td>${esc(fiscalStatus(s))}</td><td><button class="btn sm ghost" onclick="workflowDetail('${s.id}')">Revisar</button> <button class="btn sm" onclick="workflowFiscalPrepare('${s.id}')">Consultar / preparar</button>${vig(s)&&!s.reversal?` <button class="btn sm bad" onclick="voidSale('${s.id}')">Revertir</button>`:''}${s.solicitud?` <button class="btn sm ghost" onclick="askReason('Rechazar solicitud','El motivo quedará en el historial.',reason=>{try{rejectReversalRequest('${s.id}',reason);closeModal();render()}catch(e){toast(e.message)}})">Rechazar solicitud</button>`:''}</td></tr>`).join('')||'<tr><td colspan="5">Sin operaciones</td></tr>'}</tbody></table></div><div class="acts"><button class="btn ghost" ${workflowPage===0?'disabled':''} onclick="workflowPage--;render()">Anterior</button><span>Página ${workflowPage+1} de ${Math.max(1,Math.ceil(filtered.length/50))}</span><button class="btn ghost" ${(workflowPage+1)*50>=filtered.length?'disabled':''} onclick="workflowPage++;render()">Siguiente</button></div></div>
-    <div class="card" style="margin-top:16px"><h3>Ajustes y conciliación</h3><div class="rows">${S.adjustments.slice().reverse().slice(0,30).map(a=>`<div><div class="grow"><b>Venta ${workflowSale(a.saleId).num} · ${clp(a.total)}</b><span>${fdt(a.fecha)} · ${esc(a.reason)}${a.originalClosure?' · Cierre original conservado: '+esc(a.originalClosure):''} · Productores: ${Object.keys(a.producers).map(p=>esc(PR(p).nombre)).join(', ')||'sin consignación'}</span></div></div>`).join('')||'<p class="muted">Sin ajustes.</p>'}</div></div>`;
 }
 function reserveFifo(prodId,qty,until,reserved){
   const out=[];let rest=qty;

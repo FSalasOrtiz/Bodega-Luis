@@ -17,24 +17,24 @@ function invoiceModel(s){
 function invoicePreviewHTML(s){
   const m=invoiceModel(s),e=m.issuer,c=m.customer;
   const field=(label,value)=>`<div><dt>${label}</dt><dd>${esc(value||'No registrado')}</dd></div>`;
-  return `<div class="receipt-heading noprint"><h2>Vista previa de factura</h2><p class="muted">Venta N° ${s.num} · Formato de hoja A4 · Documento de demostración</p></div>
-  <div class="invoice-stage"><article class="invoice-paper printable" aria-label="Factura de demostración ${s.num}">
+  return `<div class="receipt-heading noprint"><h2>Vista previa de factura</h2><p class="muted">Venta N° ${s.num} · Formato de hoja A4 · La factura oficial la emite la contadora</p></div>
+  <div class="invoice-stage"><article class="invoice-paper printable" aria-label="Factura ${s.num}">
     <header class="invoice-header"><div class="invoice-issuer"><h3>${esc(e.nombre)}</h3><p><b>Giro:</b> ${esc(e.giro||'Por configurar')}</p><p>${esc(e.direccion||'Dirección por configurar')}</p><p>${esc(e.comuna||'Comuna por configurar')}</p>${e.telefono?`<p>Teléfono: ${esc(e.telefono)}</p>`:''}</div>
-    <div class="invoice-document"><div class="invoice-tax-box"><b>R.U.T.: ${esc(e.rut)}</b><strong>FACTURA ELECTRÓNICA</strong><span>DEMOSTRACIÓN</span><b>SIN FOLIO SII</b></div><p>${e.siiUnidad?'S.I.I. - '+esc(e.siiUnidad):'Unidad SII pendiente de configurar'}</p></div></header>
+    <div class="invoice-document"><div class="invoice-tax-box"><b>R.U.T.: ${esc(e.rut)}</b><strong>FACTURA</strong><span>LA EMITE LA CONTADORA</span><b>SIN FOLIO SII</b></div></div></header>
     <div class="invoice-notice">DOCUMENTO NO VÁLIDO TRIBUTARIAMENTE · NO CEDIBLE</div>
     ${s.estado==='anulada'?`<p class="invoice-cancelled"><b>VENTA ANULADA</b> · ${esc(s.motivoAnula||'')}</p>`:''}
     <div class="invoice-date"><span><b>Comprobante interno:</b> ${s.num}</span><span><b>Fecha de emisión:</b> ${fdate(s.fecha)}</span></div>
     <dl class="invoice-customer">${field('Señor(es)',c.razonSocial)}${field('RUT',c.rut)}${field('Giro',c.giro)}${field('Teléfono',c.telefono)}${field('Dirección',c.direccion)}${field('Comuna',c.comuna)}</dl>
-    <p class="invoice-payment"><b>Medios de pago:</b> ${m.data.pagos.filter(p=>p.monto).map(p=>esc(receiptPayment(p.medio))+' '+invoiceMoney(p.monto)).join(' · ')}<br><b>Estado tributario:</b> ${esc(fiscalStatus(s))}</p>
+    <p class="invoice-payment"><b>Medios de pago:</b> ${m.data.pagos.filter(p=>p.monto).map(p=>esc(receiptPayment(p.medio))+' '+invoiceMoney(p.monto)).join(' · ')}</p>
     ${m.warning?`<p class="invoice-notice">${esc(m.warning)}</p>`:''}
     <div class="invoice-items-wrap"><table class="invoice-items"><caption class="receipt-sr">Detalle de la factura: valores netos referenciales</caption><colgroup><col style="width:4%"><col style="width:9%"><col style="width:32%"><col style="width:8%"><col style="width:6%"><col style="width:15%"><col style="width:9%"><col style="width:17%"></colgroup><thead><tr><th scope="col">Ítem</th><th scope="col">Código</th><th scope="col">Descripción</th><th scope="col">Cantidad</th><th scope="col">Unid.</th><th scope="col">P. unit. neto</th><th scope="col">Dscto.</th><th scope="col">Valor neto</th></tr></thead><tbody>
     ${m.rows.map(r=>`<tr><td>${r.index}</td><td>${esc(r.codigo||'—')}</td><td>${esc(r.nombre)}</td><td class="invoice-number">${kg(r.qty)}</td><td>${r.unidad==='kg'?'kg':'gam.'}</td><td class="invoice-number">${invoiceMoney(r.unitNet,6)}</td><td class="invoice-number">$0</td><td class="invoice-number">${invoiceMoney(r.net)}</td></tr>`).join('')}
     </tbody></table></div>
     <p class="invoice-rounding">Detalle neto y desglose de IVA referenciales; todos los productos se consideran afectos. Los redondeos conservan el total cobrado.</p>
-    <section class="invoice-bottom"><div class="invoice-document-notes"><h4>Referencias</h4><p>Sin documentos de referencia registrados.</p><div class="invoice-stamp"><b>Timbre electrónico SII no disponible</b><span>Pendiente de emisión e integración</span></div><p>Sin folio ni resolución de emisión asociados a este comprobante interno.</p></div>
+    <section class="invoice-bottom"><div class="invoice-document-notes"><h4>Referencias</h4><p>Sin documentos de referencia registrados.</p><div class="invoice-stamp"><b>Timbre electrónico SII no disponible</b><span>La emite la contadora</span></div><p>Sin folio ni resolución de emisión asociados a este comprobante interno.</p></div>
       <dl class="invoice-totals"><div><dt>Monto neto referencial</dt><dd>${invoiceMoney(m.net)}</dd></div><div><dt>Monto exento referencial</dt><dd>$0</dd></div><div><dt>IVA (19%) referencial</dt><dd>${invoiceMoney(m.iva)}</dd></div><div class="invoice-total"><dt>TOTAL</dt><dd>${invoiceMoney(m.total)}</dd></div></dl></section>
-    <section class="invoice-ack"><h4>Acuse de recibo · demostración</h4><div><span>Nombre: __________________________</span><span>RUT: __________________</span><span>Fecha: ________________</span><span>Recinto: __________________________</span><span>Firma: __________________</span></div><p>Este ejemplar no constituye un acuse legal ni un documento cedible.</p></section>
-    <footer class="invoice-footer">Comprobante interno de demostración · Sin validez tributaria · Vendedor: ${esc(m.data.vendedor)}</footer>
+    <section class="invoice-ack"><h4>Acuse de recibo</h4><div><span>Nombre: __________________________</span><span>RUT: __________________</span><span>Fecha: ________________</span><span>Recinto: __________________________</span><span>Firma: __________________</span></div><p>Este ejemplar no constituye un acuse legal ni un documento cedible.</p></section>
+    <footer class="invoice-footer">Comprobante interno · La factura oficial la emite la contadora · Vendedor: ${esc(m.data.vendedor)}</footer>
   </article></div>
   <div class="receipt-actions acts noprint"><button class="btn ghost" onclick="downloadReceiptPDF('${s.id}')">Descargar factura PDF</button><button class="btn" onclick="shareReceipt('${s.id}')">${ic('wa',17)}WhatsApp · PDF</button><button class="btn pri" onclick="closeModal()">Listo</button></div>
   <p id="receipt-share-status" class="receipt-share-help muted noprint" role="status" aria-live="polite">Selecciona WhatsApp en el menú para compartir la factura PDF. Requiere HTTPS y un navegador compatible.</p>`;
@@ -76,9 +76,7 @@ function sheetInvoicePDF(s){
     const bx=W-margin-219;
     rect(bx,margin,219,100,'0.66 0.12 0.12');
     const boxLine=(text,top,size,bold)=>drawText(text,bx+Math.max(8,(219-invoiceTextWidth(text,size))/2),top,size,bold,'0.66 0.12 0.12');
-    boxLine('R.U.T.: '+e.rut,margin+12,12,true);boxLine('FACTURA ELECTRÓNICA',margin+34,12,true);boxLine('DEMOSTRACIÓN',margin+56,10,true);boxLine('SIN FOLIO SII',margin+77,11,true);
-    const unit=invoiceWrap(e.siiUnidad?'S.I.I. - '+e.siiUnidad:'Unidad SII pendiente de configurar',219,8);
-    unit.forEach((t,i)=>drawText(t,bx,margin+105+i*10,8));
+    boxLine('R.U.T.: '+e.rut,margin+12,12,true);boxLine('FACTURA',margin+34,12,true);boxLine('LA EMITE LA CONTADORA',margin+56,10,true);boxLine('SIN FOLIO SII',margin+77,11,true);
     y=Math.max(issuerY+8,margin+128);
     rect(margin,y,contentWidth,21,'0.94 0.94 0.94',true);drawText('DOCUMENTO NO VÁLIDO TRIBUTARIAMENTE - NO CEDIBLE',margin+8,y+5,9,true);y+=32;
     drawText('Comprobante interno N° '+s.num,margin,y,9,true);drawText('Fecha de emisión: '+fdate(s.fecha),W-margin-174,y,9);y+=22;
@@ -88,7 +86,6 @@ function sheetInvoicePDF(s){
     }
     rect(margin,clientTop,contentWidth,y-clientTop);y+=10;
     y+=paragraph('Medios de pago: '+m.data.pagos.filter(p=>p.monto).map(p=>receiptPayment(p.medio)+' '+invoiceMoney(p.monto)).join(' / '),margin,y,contentWidth,8.5);
-    y+=paragraph('Estado tributario: '+fiscalStatus(s),margin,y,contentWidth,8.5)+3;
     y+=paragraph('Vendedor: '+m.data.vendedor,margin,y,contentWidth,8.5)+9;
     if(s.estado==='anulada')y+=paragraph('VENTA ANULADA: '+(s.motivoAnula||''),margin,y,contentWidth,9,true)+6;
     if(m.warning)y+=paragraph(m.warning,margin,y,contentWidth,9,true)+6;
@@ -118,18 +115,18 @@ function sheetInvoicePDF(s){
   const bottom=y,right=W-margin-218;
   drawText('Referencias',margin,y,9,true);paragraph('Sin documentos de referencia registrados.',margin,y+18,270,8.5);
   const stampTop=y+48;rect(margin,stampTop,200,64);
-  paragraph('Timbre electrónico SII no disponible',margin+12,stampTop+16,180,9,true);paragraph('Pendiente de emisión e integración',margin+12,stampTop+39,180,8);
+  paragraph('Timbre electrónico SII no disponible',margin+12,stampTop+16,180,9,true);paragraph('La emite la contadora',margin+12,stampTop+39,180,8);
   paragraph('Sin folio ni resolución de emisión asociados a este comprobante interno.',margin,stampTop+72,270,8);
   let ty=bottom;for(const [label,amount,strong]of [['Monto neto referencial',m.net,false],['Monto exento referencial',0,false],['IVA (19%) referencial',m.iva,false],['TOTAL',m.total,true]]){
     if(strong)rect(right,ty,218,31,'0.94 0.94 0.94',true);
     const size=strong?11:9,amountText=invoiceMoney(amount),split=invoiceTextWidth(label,size)+invoiceTextWidth(amountText,size)>190;
     drawText(label,right+8,ty+8,size,strong);drawText(amountText,W-margin-8-invoiceTextWidth(amountText,size),ty+(split?24:8),size,strong);ty+=split?43:strong?31:26;
   }
-  y=Math.max(bottom+163,ty+14);rect(margin,y,contentWidth,75);drawText('Acuse de recibo - demostración',margin+8,y+8,9,true);
+  y=Math.max(bottom+163,ty+14);rect(margin,y,contentWidth,75);drawText('Acuse de recibo',margin+8,y+8,9,true);
   drawText('Nombre: __________________________    RUT: _________________    Fecha: __________',margin+8,y+27,8);
   drawText('Recinto: __________________________    Firma: _______________________________',margin+8,y+44,8);
   drawText('Este ejemplar no constituye un acuse legal ni un documento cedible.',margin+8,y+61,8);
-  pages.forEach((p,i)=>{page=p;drawText('Demostración - Sin validez tributaria - No cedible',margin,H-36,8);drawText('Página '+(i+1)+' de '+pages.length,W-margin-86,H-36,8)});
+  pages.forEach((p,i)=>{page=p;drawText('Comprobante interno - La factura oficial la emite la contadora',margin,H-36,8);drawText('Página '+(i+1)+' de '+pages.length,W-margin-86,H-36,8)});
   const objects=[],put=body=>{objects.push(body);return objects.length};put('<< /Type /Catalog /Pages 2 0 R >>');put('');
   const regular=put('<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica /Encoding /WinAnsiEncoding >>'),bold=put('<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold /Encoding /WinAnsiEncoding >>');
   const ids=[];for(const p of pages){const stream=put(`<< /Length ${p.stream.length} >>\nstream\n${p.stream}endstream`);ids.push(put(`<< /Type /Page /Parent 2 0 R /MediaBox [0 0 ${W} ${H}] /Resources << /Font << /F1 ${regular} 0 R /F2 ${bold} 0 R >> >> /Contents ${stream} 0 R >>`))}

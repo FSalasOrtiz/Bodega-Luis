@@ -71,8 +71,8 @@ assert.equal(run('S.closures.length'),2);assert.equal(run('S.closures[1].netoEfe
 console.log('OK previous closure and settlement preserved, adjustment dated later, consignment credit and subsequent cash out close');
 reset();run('s=registerSaleCommand(draft);me=S.users[1]');assert.throws(()=>run('reverseSaleCommand(s.id,"no permiso",true)'),/administrador/);assert.throws(()=>run('requestReversalCommand(s.id,"ajena")'),/tus ventas/);
 run('me=S.users[0];s=S.sales[0];s.vendedor="seller";localStorage.setItem(KEY,JSON.stringify(S));me=S.users[1];requestReversalCommand(s.id,"cliente solicita")');assert.equal(run('s.solicitud'),'cliente solicita');assert.equal(run('prodStock("p")'),14);
-run('me=S.users[0];go("fiscal")');assert(root.innerHTML.includes('Control tributario y reversiones'));assert(root.innerHTML.includes('cliente solicita'));
-console.log('OK seller/admin permissions, traceable request, admin panel renders');
+run('me=S.users[0];go("fiscal")');assert(!root.innerHTML.includes('Control tributario'));assert(!run('menu().some(x=>x.id==="fiscal")'));
+console.log('OK seller/admin permissions, traceable request, fiscal module removed');
 reset();run('S.cfg.modeloBoleta="siempre_boleta";s=registerSaleCommand({...draft,payments:[{medio:"tarjeta",monto:200,reference:"term:1"}]})');assert.equal(run('s.fiscalDocs[0].state'),'pendiente_conciliacion');
 assert.throws(()=>run('registerSaleCommand({...draft,key:"new-key",payments:[{medio:"tarjeta",monto:200,reference:"term:1"}]})'),/referencia/);assert.equal(run('S.sales.length'),1);
 reset();run('S.cfg.modeloBoleta="siempre_boleta";S.cfg.modeloReferencia="declared";s=registerSaleCommand({...draft,payments:[{medio:"tarjeta",monto:200,reference:"term:2"}]})');assert.deepEqual(value('s.fiscalDocs.map(d=>[d.kind,d.amount])'),[['boleta',200]]);
