@@ -354,11 +354,15 @@ assert.equal(run("S.cfg.telefonoEmisor"),'+56956109092');
 assert.equal(run("dayKey(new Date(2026,10,5,1,0).getTime())"),'2026-11-05');assert.equal(run("dayKey(new Date(2026,10,4,23,59).getTime())"),'2026-11-04');
 run("view='users';render()");assert(!root.innerHTML.includes('Inicio de jornada'),'sin ajuste de jornada');
 run("view='users';render()");assert(!/Modelo de boletas|Unidad SII|Operador de tarjeta/.test(root.innerHTML),'ajustes sin campos del SII');
-// recepción: coma decimal y gamelas que pasan a la bodega (Luis decide cuántas)
+// recepción: coma decimal; la gamela es un producto más que se agrega a mano; comisión por recepción
 {const pal=run("S.products.find(p=>p.sku==='PAL-I').id"),k0=run(`prodStock('${pal}')`),g0=run("prodStock(gamId())");
 run(`view='rec';ui.recTab='rec';newRecForm();recForm.lineas=[{prod:tom.id,qty:'10',costo:''},{prod:'${pal}',qty:'92,73',costo:''}];render()`);
-assert(root.innerHTML.includes('Gamelas que pasan a la bodega')&&root.innerHTML.includes('Llegaron 10 gamelas'));
-run("recForm.gamBodega='6';saveRec()");assert(Math.abs(run(`prodStock('${pal}')`)-(k0+92.73))<1e-6,'acepta 92,73');assert.equal(run("prodStock(gamId())"),g0+6,'pasan las gamelas que dice Luis');
+assert(!root.innerHTML.includes('Gamelas que pasan a la bodega'),'sin gamelas automáticas');assert(root.innerHTML.includes('Gamela (envase)'),'gamela en la lista de productos');assert(root.innerHTML.includes('% comisión'),'comisión en la recepción');
+run("saveRec()");assert.equal(run("prodStock(gamId())"),g0,'no suma gamelas solas');const k1=run(`prodStock('${pal}')`);
+run(`newRecForm();recForm.comision='12,5';recForm.lineas=[{prod:'${pal}',qty:'92,73',costo:''},{prod:gamId(),qty:'6',costo:''}];saveRec()`);assert(Math.abs(run(`prodStock('${pal}')`)-(k1+92.73))<1e-6,'acepta 92,73');assert.equal(run("prodStock(gamId())"),g0+6,'gamelas agregadas a mano');
+assert.equal(run("S.lots.find(l=>l.rec===S.receptions.at(-1).id).comision"),12.5,'comisión guardada en el lote');
+run("view='users';render()");assert(!/Garantía por gamela|Comisión por defecto/.test(root.innerHTML),'ajustes sin garantía ni comisión');
+run("editProducer()");assert(!/id="p_t"|id="p_c"/.test(run("capture")),'productor sin tipo ni comisión');run("closeModal()");
 run("voidRec(S.receptions.at(-1).id)");}
 // merma con coma decimal
 {const pal=run("S.products.find(p=>p.sku==='PAL-I').id"),k1=run(`prodStock('${pal}')`);run(`mermaF={prod:'${pal}',qty:decIn('1,5')};saveMerma()`);assert(Math.abs(run(`prodStock('${pal}')`)-(k1-1.5))<1e-6,'merma acepta 1,5');}
