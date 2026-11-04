@@ -350,6 +350,9 @@ run("ui.receptor={rut:'12.345.678-5',razonSocial:'Verdulería Sol',giro:'Comerci
 assert.equal(run("receiptKind(S.sales.at(-1))"),'Factura');assert.equal(run("S.sales.at(-1).receptor.razonSocial"),'Verdulería Sol');assert.equal(run("ui.documento"),'boleta');
 run("view='sales';ui.salesTab='list';sf={desde:'',hasta:'',vend:'',medio:'',doc:'factura'};render()");assert(root.innerHTML.includes('Verdulería Sol')&&root.innerHTML.includes('<th>Cliente</th>'),'facturas con cliente en el historial');run("sf.doc=''");
 assert.equal(run("S.cfg.telefonoEmisor"),'+56956109092');
+// día de calendario: una venta a la 01:00 cuenta en ese mismo día (no en el anterior)
+assert.equal(run("dayKey(new Date(2026,10,5,1,0).getTime())"),'2026-11-05');assert.equal(run("dayKey(new Date(2026,10,4,23,59).getTime())"),'2026-11-04');
+run("view='users';render()");assert(!root.innerHTML.includes('Inicio de jornada'),'sin ajuste de jornada');
 run("view='users';render()");assert(!/Modelo de boletas|Unidad SII|Operador de tarjeta/.test(root.innerHTML),'ajustes sin campos del SII');
 // recepción: coma decimal y gamelas que pasan a la bodega (Luis decide cuántas)
 {const pal=run("S.products.find(p=>p.sku==='PAL-I').id"),k0=run(`prodStock('${pal}')`),g0=run("prodStock(gamId())");
