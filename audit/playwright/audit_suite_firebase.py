@@ -314,9 +314,9 @@ def _(b):
     total_ui = c.page.locator('.total').last.inner_text()
     ck = checkout(c); check(ck['opened'], ck)
     receipt_open = c.modal_open()
-    sale = c.js("S.sales[S.sales.length-1]")
-    c.page.reload(); c.page.wait_for_selector('#lg_u, aside .nav', timeout=30000); c.page.wait_for_timeout(300)
-    persisted = c.js(f"S.sales.length")
+    wait_js(c, f'S.sales.length>{n0}'); sale = c.js("S.sales[S.sales.length-1]")
+    c.page.reload(); c.page.wait_for_selector('#lg_u, aside .nav', timeout=30000)
+    persisted = wait_js(c, f'typeof S!=="undefined"&&S.products.length&&S.sales.length>{n0}&&S.sales.length', 15000)
     s1 = stock(c, 'TOM-C9'); c.close()
     exp_total = 2 * price + 2 * 1000  # 2 gamelas de garantía que se lleva
     check(persisted == n0 + 1 and abs(s1 - (s0 - 2)) < 1e-9 and sale['total'] == exp_total and receipt_open,
