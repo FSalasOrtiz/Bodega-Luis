@@ -9,7 +9,7 @@ vm.createContext(context);vm.runInContext(source,context);
 assert(root.innerHTML.includes('Ingresar'));
 for(const role of ['admin','vendedor']){
  vm.runInContext(`me=S.users.find(x=>x.rol==='${role}');`,context);
- for(const view of role==='admin'?['dash','pos','rec','inv','sales','moves','prod','gastos','bal','rep','users']:['pos','rec','inv','sales']){
+ for(const view of role==='admin'?['dash','pos','rec','inv','sales','prod','bal','users']:['pos','rec','inv','sales']){
   vm.runInContext(`go('${view}')`,context);
   assert(root.innerHTML.includes('<main'),`${role}: ${view}`);
   assert(!root.innerHTML.includes('NaN'),`${view}: NaN`);
@@ -202,7 +202,7 @@ run("prepareCheckout()");assert.match(context.lastToast,/menor que la compra/);
 run("ui.cart=[];ui.gamExtra=2;ui.gamTrae=0;render()");assert(!/disabled onclick="confirmSale/.test(root.innerHTML),'se pueden vender gamelas vacías solas');
 run("ui.gamExtra=0;ui.cart=[]");
 // balance separa gamelas cobradas y descontadas
-run("view='bal';render()");assert(root.innerHTML.includes('Gamelas (garantía neta)')&&root.innerHTML.includes('Descontadas (las trajo el cliente)'));
+run("view='bal';render()");assert(root.innerHTML.includes('Gamelas (garantía neta)')&&/cobradas − \d+ descontadas/.test(root.innerHTML)&&!root.innerHTML.includes('Gamelas del mes'));
 run("view='pos'");
 // precio especial por una venta: el vendedor lo pide, Luis lo ve arriba y en la campana, autoriza o rechaza; se consume al vender
 {const setPrice=v=>{context.document.querySelector=q=>q==='#root'?root:q==='#pe-precio'?{value:String(v),focus(){}}:fake};
@@ -254,16 +254,23 @@ context.document.querySelector=s=>s==='#root'?root:fake;
 run("me=S.users.find(u=>u.usuario==='gonzalo');view='caja';render()");assert(root.innerHTML.includes('Vendido a crédito'));
 const espBefore=run("S.sales.filter(s=>s.vendedor===me.id&&activeFinancialSale(s)&&!s.cierre).reduce((a,s)=>a+saleCash(s),0)");
 const fiadoBefore=run("S.sales.filter(s=>s.vendedor===me.id&&activeFinancialSale(s)&&!s.cierre).reduce((a,s)=>a+saleCredit(s),0)");
-// el vendedor no ve el módulo Créditos ni puede registrar pagos de deuda
-assert(!run("menu().some(m=>m.id==='credits')"),'vendedor sin módulo créditos');
-run("go('credits')");assert(!root.innerHTML.includes('Total por cobrar'));
+// el vendedor ve Créditos y registra pagos de deuda, pero quedan pendientes hasta que Luis los autoriza
+assert(run("menu().some(m=>m.id==='credits')"),'vendedor con módulo créditos');
+run("view='credits';render()");assert(root.innerHTML.includes('Total por cobrar'));assert(!root.innerHTML.includes('Nuevo cliente'),'el vendedor no crea clientes');
 context.document.querySelector=s=>s==='#root'?root:s==='#ab-monto'?{value:'10000'}:s==='#ab-medio'?{value:'efectivo'}:fake;
-run("globalThis.d0=creditBalance('c1');saveAbono('c1')");assert.equal(run("creditBalance('c1')"),context.d0);assert.match(context.lastToast,/Solo Luis/);
+run("globalThis.d0=creditBalance('c1');saveAbono('c1')");assert.equal(run("creditBalance('c1')"),context.d0,'pendiente: no baja la deuda');assert.match(context.lastToast,/autorización de Luis/);
+assert.equal(run("pendingAbonoRequests().length"),1);assert.equal(run("abonoAvailable('c1')"),context.d0-10000);
+assert(!run("S.creditPayments.some(a=>a.solicitud)"),'pendiente: no entra a la caja');
+run("view='credits';render()");assert(root.innerHTML.includes('Esperando a Luis'));
 context.document.querySelector=s=>s==='#root'?root:s==='#opening'?{value:'0'}:s==='#dec'?{value:String(espBefore)}:fake;
 run("closeShift()");const k=run("S.closures[S.closures.length-1]");
 assert.equal(k.esperado,espBefore);assert.equal(k.fiado,fiadoBefore,'lo vendido a crédito no entra a la caja');assert.equal(k.diferencia,0);
 // Luis registra pagos de deuda: entran a su caja
 run("me=S.users.find(u=>u.rol==='admin')");
+run("view='dash';render()");assert(root.innerHTML.includes('registró un pago de deuda')||root.innerHTML.includes('registraron un pago de deuda'),'Luis ve el pago por autorizar');
+run("resolveAbonoRequest(pendingAbonoRequests()[0].id,true)");assert.equal(run("creditBalance('c1')"),context.d0-10000,'autorizado: baja la deuda');
+assert(run("moneyEntries().some(e=>e.abono&&e.user===S.users.find(u=>u.usuario==='gonzalo').id&&e.monto===10000)"),'autorizado: entra a la caja del vendedor');
+assert.equal(run("S.creditPayments.find(a=>a.solicitud).user"),run("S.users.find(u=>u.usuario==='gonzalo').id"),'no entra a la caja de Luis');
 context.document.querySelector=s=>s==='#root'?root:s==='#ab-monto'?{value:'10000'}:s==='#ab-medio'?{value:'efectivo'}:fake;
 run("globalThis.d1=creditBalance('c1');saveAbono('c1')");assert.equal(run("creditBalance('c1')"),context.d1-10000);
 assert(run("moneyEntries().some(e=>e.abono&&e.user===me.id&&e.monto===10000)"),'el pago entra a la caja de Luis');
@@ -295,19 +302,19 @@ run(`globalThis.lastToast='';receipt('${otherSale}')`);assert.match(context.last
 run("render()");assert(root.innerHTML.includes('Cambiar contraseña'));
 const pw=(o,n,r)=>{context.document.querySelector=s=>s==='#root'?root:s==='#pw-old'?{value:o}:s==='#pw-new'?{value:n}:s==='#pw-rep'?{value:r}:fake;run("savePw()")};
 context.setTimeout=()=>0;run("pwForm()");assert(context.capture.includes('Contraseña actual'));
-pw('mala','abcd','abcd');assert.equal(run("me.clave"),'2222','clave actual incorrecta no cambia');
-pw('2222','ab','ab');assert.equal(run("me.clave"),'2222','mínimo 4');
-pw('2222','abcd','abce');assert.equal(run("me.clave"),'2222','deben coincidir');
-pw('2222','abcd','abcd');assert.equal(run("me.clave"),'abcd');
-pw('abcd','wxyz','wxyz');assert.equal(run("me.clave"),'wxyz');assert.match(context.lastToast,/Ya no puedes/);
-pw('wxyz','qrst','qrst');assert.equal(run("me.clave"),'wxyz','tercer cambio del día bloqueado');
+pw('mala','123456','123456');assert.equal(run("me.clave"),'222222','clave actual incorrecta no cambia');
+pw('222222','1234','1234');assert.equal(run("me.clave"),'222222','6 números');pw('222222','abcdef','abcdef');assert.equal(run("me.clave"),'222222','solo números');
+pw('222222','123456','123457');assert.equal(run("me.clave"),'222222','deben coincidir');
+pw('222222','123456','123456');assert.equal(run("me.clave"),'123456');
+pw('123456','654321','654321');assert.equal(run("me.clave"),'654321');assert.match(context.lastToast,/Ya no puedes/);
+pw('654321','987654','987654');assert.equal(run("me.clave"),'654321','tercer cambio del día bloqueado');
 run("globalThis.lastToast='';pwForm()");assert.match(context.lastToast,/2 veces hoy/);
 context.document.querySelector=qs;
 run("render()");assert(!root.innerHTML.includes('pw-btn'),'sin botón de clave arriba');assert(root.innerHTML.includes('Cambiar contraseña'),'vendedor: clave en el menú');
 run("me=S.users.find(u=>u.rol==='admin');render()");assert(root.innerHTML.includes('pwForm()')&&!root.innerHTML.includes('pw-btn'),'Luis: clave en el menú, no arriba');
 {const adm=run("me.clave");context.setTimeout=()=>0;const qs2=context.document.querySelector;
-for(const n of ['adm1','adm2','adm3']){context.document.querySelector=s=>s==='#root'?root:s==='#pw-old'?{value:run("me.clave")}:s==='#pw-new'?{value:n}:s==='#pw-rep'?{value:n}:fake;run("savePw()")}
-assert.equal(run("me.clave"),'adm3','admin sin límite diario');assert.equal(run("S.users.find(u=>u.rol==='admin').clave"),'adm3');context.document.querySelector=qs2;assert.notEqual(adm,'adm3')}
+for(const n of ['100001','100002','100003']){context.document.querySelector=s=>s==='#root'?root:s==='#pw-old'?{value:run("me.clave")}:s==='#pw-new'?{value:n}:s==='#pw-rep'?{value:n}:fake;run("savePw()")}
+assert.equal(run("me.clave"),'100003','admin sin límite diario');assert.equal(run("S.users.find(u=>u.rol==='admin').clave"),'100003');context.document.querySelector=qs2;assert.notEqual(adm,'100003')}
 // medios de pago: sin referencias; mixto con dos medios cualesquiera
 context.document.querySelector=s=>s==='#root'?root:fake;
 run("me=S.users.find(u=>u.rol==='admin');view='pos';ui.credito=false;ui.cart=[{prod:tom.id,qty:2}];ui.gamExtra=0;ui.gamTrae=2;ui.pago='tarjeta';render()");
@@ -329,7 +336,7 @@ run("dashGo('inv',{fam:'Palta'})");assert.equal(run("view+':'+ui.fam"),'inv:Palt
 // cierre de caja como módulo; Luis aprueba cierres desde el dashboard
 run("me=S.users.find(u=>u.usuario==='gonzalo');view='caja';render()");assert(root.innerHTML.includes('<h1>Cierre de caja</h1>')&&root.innerHTML.includes('Declarar y cerrar turno'));
 assert(run("menu().some(m=>m.id==='caja')"),'vendedor ve el módulo');assert(/onclick="go\('caja'\)">[^<]*<span[^>]*>💵<\/span>Caja/.test(root.innerHTML),'Caja en la barra inferior');
-assert(/<nav class="bnav">[\s\S]*onclick="pwForm\(\)">[\s\S]*Clave<\/a><\/nav>/.test(root.innerHTML),'Clave en la barra inferior del vendedor');
+assert(/<nav class="bnav">[\s\S]*onclick="moreMenu\(\)">[\s\S]*Más<\/a><\/nav>/.test(root.innerHTML),'Más en la barra inferior del vendedor (Créditos y contraseña)');
 run("view='sales';render()");assert(!root.innerHTML.includes("salesTab='cierre'"),'el cierre ya no es pestaña del historial');
 run("S.closures.push({id:'k-test',vendedor:me.id,turno:'noche',fecha:now(),esperado:1000,declarado:900,transf:500,tarjeta:0,diferencia:-100,aprobado:''});approveClose('k-test')");assert.equal(run("S.closures.at(-1).aprobado"),'','el vendedor no aprueba');
 run("me=S.users.find(u=>u.rol==='admin');view='dash';render()");assert(root.innerHTML.includes('por aprobar')&&root.innerHTML.includes("approveClose('k-test')"),'Luis ve el cierre por aprobar en el dashboard');
@@ -338,7 +345,13 @@ run("approveClose('k-test');render()");assert(!root.innerHTML.includes("approveC
 run("moreMenu()");assert(context.capture.includes('Cambiar contraseña')&&context.capture.includes('💵'),'Luis: Más con contraseña y caja');
 // transferencias resaltadas; etiquetas de balance e inventario
 run("ui.salesTab='list';sf={desde:'',hasta:'',vend:'',medio:'transferencia'};view='sales';render()");assert(root.innerHTML.includes('class="pay-tr"')&&root.innerHTML.includes('row-tr'));
-run("view='bal';render()");assert(root.innerHTML.includes('>Ingresos<')&&root.innerHTML.includes('>Egresos<')&&root.innerHTML.includes('Total del período')&&!root.innerHTML.includes('Entradas de la bodega'));
+run("view='bal';render()");assert(root.innerHTML.includes('>Ingresos<')&&root.innerHTML.includes('>Egresos<')&&root.innerHTML.includes('Resultado del mes')&&root.innerHTML.includes('Agregar gasto')&&!root.innerHTML.includes('Entradas de la bodega'));
+run("view='bal';render()");assert(!root.innerHTML.includes('Ventas por periodo')&&!root.innerHTML.includes('Calendario de temporadas'));
+run("openMonthCal('bm',monthKey(now()))");assert(context.capture.includes('Elegir mes')&&context.capture.includes('Mes actual'),'calendario de meses');run('closeModal()');
+for(const t of ['Gastos fijos','Gastos variables','Lo vendido en','Últimos meses','Exportar ventas','Exportar meses','Agregar gasto','openMonthCal'])assert(root.innerHTML.includes(t),'balance: '+t);
+assert(!run("menu().some(m=>m.id==='rep'||m.id==='gastos'||m.id==='moves')"),'sin Reportes, Gastos ni Movimientos en el menú');
+run("lf.prod=S.producers[0].id;view='prod';render()");for(const t of ['Historial de recepciones','✏️ Editar','Productores y proveedores'])assert(root.innerHTML.includes(t),'productores: '+t);
+assert(!root.innerHTML.includes('Liquidaciones emitidas')||run("S.liqs.some(l=>l.prod===lf.prod)"));
 run("view='inv';render()");assert(root.innerHTML.includes('Stock total'));run("view='dash';render()");assert(root.innerHTML.includes('Llegó hoy y stock total'));
 // documento: boleta o factura (con todos los datos)
 context.document.querySelector=s=>s==='#root'?root:fake;
@@ -357,10 +370,10 @@ run("view='users';render()");assert(!/Modelo de boletas|Unidad SII|Operador de t
 // recepción: coma decimal; la gamela es un producto más que se agrega a mano; comisión por recepción
 {const pal=run("S.products.find(p=>p.sku==='PAL-I').id"),k0=run(`prodStock('${pal}')`),g0=run("prodStock(gamId())");
 run(`view='rec';ui.recTab='rec';newRecForm();recForm.lineas=[{prod:tom.id,qty:'10',costo:''},{prod:'${pal}',qty:'92,73',costo:''}];render()`);
-assert(!root.innerHTML.includes('Gamelas que pasan a la bodega'),'sin gamelas automáticas');assert(root.innerHTML.includes('Gamela (envase)'),'gamela en la lista de productos');assert(root.innerHTML.includes('% comisión'),'comisión en la recepción');
+assert(!root.innerHTML.includes('Gamelas que pasan a la bodega'),'sin gamelas automáticas');assert(root.innerHTML.includes('Gamela (envase)'),'gamela en la lista de productos');assert(!root.innerHTML.includes('% comisión'),'la comisión ya no va en la recepción');
 run("saveRec()");assert.equal(run("prodStock(gamId())"),g0,'no suma gamelas solas');const k1=run(`prodStock('${pal}')`);
-run(`newRecForm();recForm.comision='12,5';recForm.lineas=[{prod:'${pal}',qty:'92,73',costo:''},{prod:gamId(),qty:'6',costo:''}];saveRec()`);assert(Math.abs(run(`prodStock('${pal}')`)-(k1+92.73))<1e-6,'acepta 92,73');assert.equal(run("prodStock(gamId())"),g0+6,'gamelas agregadas a mano');
-assert.equal(run("S.lots.find(l=>l.rec===S.receptions.at(-1).id).comision"),12.5,'comisión guardada en el lote');
+run(`newRecForm();recForm.lineas=[{prod:'${pal}',qty:'92,73',costo:''},{prod:gamId(),qty:'6',costo:''}];saveRec()`);assert(Math.abs(run(`prodStock('${pal}')`)-(k1+92.73))<1e-6,'acepta 92,73');assert.equal(run("prodStock(gamId())"),g0+6,'gamelas agregadas a mano');
+assert.equal(run("S.lots.find(l=>l.rec===S.receptions.at(-1).id).comision"),undefined,'el lote no fija comisión');
 run("view='users';render()");assert(!/Garantía por gamela|Comisión por defecto/.test(root.innerHTML),'ajustes sin garantía ni comisión');
 run("editProducer()");assert(!/id="p_t"|id="p_c"/.test(run("capture")),'productor sin tipo ni comisión');run("closeModal()");
 run("voidRec(S.receptions.at(-1).id)");}
@@ -368,4 +381,82 @@ run("voidRec(S.receptions.at(-1).id)");}
 {const pal=run("S.products.find(p=>p.sku==='PAL-I').id"),k1=run(`prodStock('${pal}')`);run(`mermaF={prod:'${pal}',qty:decIn('1,5')};saveMerma()`);assert(Math.abs(run(`prodStock('${pal}')`)-(k1-1.5))<1e-6,'merma acepta 1,5');}
 // sin restos de "fiado", "cliente frecuente" ni control tributario en pantalla
 for(const v of ['pos','sales','caja','credits','dash','users']){run(`view='${v}';render()`);assert(!/fiad|fiar|frecuente|tributari[oa]\b(?! ·)|DTE|Control tributario/i.test(root.innerHTML.replace(/NO VÁLIDO TRIBUTARIAMENTE/g,'')),`sin textos viejos en ${v}`)}
-console.log('OK tomate pera, crédito por checkbox, autorización del admin (pedir/rechazar/autorizar/consumir), cliente nuevo, abonos y cierre');}
+console.log('OK tomate pera, crédito por checkbox, autorización del admin (pedir/rechazar/autorizar/consumir), cliente nuevo, abonos y cierre');
+// Luis no aprueba su propio cierre: queda registrado
+run("me=S.users.find(u=>u.rol==='admin')");
+context.document.querySelector=s=>s==='#root'?root:s==='#ab-monto'?{value:'1000'}:s==='#ab-medio'?{value:'efectivo'}:fake;run("saveAbono('c1')");
+context.document.querySelector=s=>s==='#root'?root:s==='#opening'?{value:'0'}:s==='#dec'?{value:'0'}:fake;
+run("closeShift()");{const kc=run("S.closures[S.closures.length-1]");assert(kc.registrado&&!kc.aprobado,'cierre de Luis registrado');}
+run("view='dash';render()");assert(!root.innerHTML.includes('por aprobar')||!run("S.closures.some(c=>c.registrado&&!c.aprobado&&closureApprovals().includes(c.id))"),'el cierre de Luis no pide aprobación');
+run("view='caja';render()");assert(root.innerHTML.includes('>Registrado<'));
+// autorizaciones aprobadas sin usar: se cancelan al quitar el crédito y vencen al cerrar el turno
+run(`me=S.users.find(u=>u.usuario==='gonzalo');S.creditRequests.push({id:'cq-a',user:me.id,clienteNombre:'X',monto:1,total:2,fecha:now(),estado:'aprobada',saleId:''},{id:'cq-b',user:me.id,clienteNombre:'Y',monto:1,total:2,fecha:now(),estado:'aprobada',saleId:''});
+ S.priceRequests.push({id:'pq-a',user:me.id,prod:'x',qty:1,precio:1,fecha:now(),estado:'aprobada',saleId:''});ui.creditReq='cq-a';toggleCredit(false,0)`);
+assert.equal(run("creditReq('cq-a').estado"),'cancelada','quitar el crédito cancela la autorización aprobada');
+run(`S.sales.push({id:'v-exp',num:99999,fecha:now(),vendedor:me.id,total:1000,estado:'vigente',lineas:[],pagos:[{medio:'efectivo',monto:1000}]})`);
+context.document.querySelector=s=>s==='#root'?root:s==='#opening'?{value:'0'}:s==='#dec'?{value:'1000'}:fake;run("closeShift()");
+assert.equal(run("creditReq('cq-b').estado"),'vencida');assert.equal(run("priceReq('pq-a').estado"),'vencida','vencen al cerrar el turno');
+// la venta anulada se muestra aparte del N° de ventas
+assert.equal(run("anulTxt(1)"),' · 1 anulada');assert.equal(run("anulTxt(2)"),' · 2 anuladas');assert.equal(run("anulTxt(0)"),'');
+context.document.querySelector=qs;run("me=S.users.find(u=>u.rol==='admin')");
+console.log('OK pagos de deuda del vendedor con autorización, cierre de Luis registrado, autorizaciones vencidas, anuladas aparte');
+}
+// dejar en blanco: sin ventas, stock, productores, clientes ni gastos; todas las vistas abren sin errores
+{const run=c=>vm.runInContext(c,context);
+run("me=S.users.find(u=>u.rol==='admin');resetData(true)");
+assert.deepEqual(JSON.parse(run("JSON.stringify(['sales','receptions','lots','moves','producers','clients','expenses','fixed','closures','creditPayments','notes'].map(k=>S[k].length))")),[0,0,0,0,0,0,0,0,0,0,0]);
+assert.equal(run("S.users.length"),4);assert(run("S.products.length")>10);assert.equal(run("srcStock(S.products[0].id,'consig')"),0);
+for(const rol of ['admin','vendedor','contador'])run(`me=S.users.find(u=>u.rol==='${rol}');menu().forEach(m=>{view=m.id;render()})`);
+run("me=S.users.find(u=>u.rol==='admin');view='rec';ui.recTab='merma';render();view='bal';render();productSheet(S.products[0].id)");
+assert(root.innerHTML.length>100);
+{const qs1=context.document.querySelector;context.document.querySelector=q=>q==='#root'?root:q==='#p_n'?{value:'Don Pedro'}:q==='#p_f'?{value:'+56911112222'}:q==='#p_r'?{value:''}:qs1(q);
+run("view='rec';ui.recTab='rec';recForm=null;render();saveProducer('')");context.document.querySelector=qs1;
+assert.equal(run("S.producers.at(-1).nombre"),'Don Pedro');assert.equal(run("recForm.productor"),run("S.producers.at(-1).id"),'productor nuevo desde Recepción queda elegido');}
+console.log('OK dejar en blanco: sin datos de ejemplo y todas las vistas abren');
+// consignación: el % de la recepción es la ganancia de la bodega; vendo $200.000 al 10% → ingreso $20.000 (Dashboard y Balance)
+run(`me=S.users.find(u=>u.rol==='admin');globalThis.t9=S.products.find(p=>p.sku==='TOM-C9');t9.precio=20000;S.producers.push({id:'prx',nombre:'Productor X',fono:'',tipo:'productor',comision:10});
+ S.lots.push({id:'lx',rec:'',prod:t9.id,qty:20,costo:0,fecha:now()-1000,productor:'prx',modalidad:'consignación',comision:10});S.moves.push({id:'mx',lot:'lx',prod:t9.id,tipo:'recepción',qty:20,fecha:now()-1000});
+ makeSale({vendedor:me.id,items:[{prod:t9.id,qty:10,src:'consig'}],pago:'efectivo'})`);
+assert.deepEqual(JSON.parse(run("JSON.stringify((({total,ingresos,comision,deProductores})=>({total,ingresos,comision,deProductores}))(dayStats(today())))")),{total:200000,ingresos:20000,comision:20000,deProductores:180000});
+assert.equal(run("monthStats(monthKey(now())).ingresos"),20000);
+run("view='dash';render()");assert(root.innerHTML.includes('Ingresos de hoy')&&root.innerHTML.includes('$20.000')&&root.innerHTML.includes('Vendido $200.000'),'el dashboard muestra la ganancia, no el total vendido');
+console.log('OK consignación: solo la comisión cuenta como ingreso en Dashboard y Balance');
+// comisión en el punto de venta: 10% fija; el admin la cambia y queda; el vendedor la pide a Luis y vale solo para esa venta
+{const qs0=context.document.querySelector,setPct=v=>{context.document.querySelector=q=>q==='#root'?root:q==='#com-pct'?{value:String(v),focus(){}}:qs0(q)};
+const admin=()=>run("me=S.users.find(u=>u.rol==='admin')"),seller=()=>run("me=S.users.find(u=>u.usuario==='gonzalo')");
+admin();assert.equal(run("comBase()"),10);
+seller();run("view='pos';ui.src='consig';ui.cart=[{prod:t9.id,qty:1,src:'consig'}];ui.gamExtra=0;ui.gamTrae=1;ui.credito=false;ui.pago='efectivo';render()");
+assert(root.innerHTML.includes('Comisión consignación 🔒 10%')&&root.innerHTML.includes('Pedir otro %'),'bloqueada en 10% para el vendedor');
+setPct('15');run("comForm();saveCom()");assert.equal(run("S.comRequests.at(-1).estado"),'pendiente');assert(root.innerHTML.includes('Esperando a Luis: 15%'));
+run("checkoutDraft=null;prepareCheckout()");assert.equal(run("checkoutDraft"),null,'no deja vender mientras espera a Luis');
+admin();run("render()");assert(root.innerHTML.includes('quiere cobrar 15% de comisión'),'Luis ve el aviso');run("resolveComRequest(S.comRequests.at(-1).id,true)");
+seller();run("render()");assert(root.innerHTML.includes('solo esta venta'));
+run("checkoutDraft=null;prepareCheckout()");assert.equal(run("checkoutDraft.comision"),15);run("registerSaleCommand({...checkoutDraft,paymentConfirmed:true});checkoutDraft=null;ui.cart=[];ui.comReq=''");
+assert.equal(run("S.sales.at(-1).comision"),15);assert.equal(run("S.sales.at(-1).lineas[0].allocs[0].comision"),15);assert.equal(run("S.comRequests.at(-1).estado"),'usada');
+assert.equal(run("comBase()"),10,'el cambio del vendedor fue temporal');
+run("ui.cart=[{prod:t9.id,qty:1,src:'consig'}];ui.gamTrae=1;render()");assert(root.innerHTML.includes('Comisión consignación 🔒 10%'),'la siguiente venta vuelve al 10%');
+run("checkoutDraft=null;prepareCheckout()");assert.equal(run("checkoutDraft.comision"),10);run("cancelCheckout&&cancelCheckout()");
+admin();setPct('12,5');run("ui.cart=[{prod:t9.id,qty:1,src:'consig'}];ui.gamTrae=1;comForm();saveCom()");assert.equal(run("comBase()"),12.5,'el admin la deja fija');
+run("checkoutDraft=null;prepareCheckout()");run("registerSaleCommand({...checkoutDraft,paymentConfirmed:true});checkoutDraft=null;ui.cart=[];ui.comReq=''");assert.equal(run("S.sales.at(-1).comision"),12.5);
+seller();run("ui.cart=[{prod:t9.id,qty:1,src:'consig'}];render()");assert(root.innerHTML.includes('🔒 12,5%'),'el vendedor ve el último % que fijó Luis');
+run("ui.cart=[{prod:t9.id,qty:1,src:'directa'}];render()");assert(!root.innerHTML.includes('Comisión consignación'),'sin consignación no aparece');
+run("ui.cart=[]");context.document.querySelector=qs0;admin();
+// crédito sobre el total final: con un precio esperando a Luis no se puede pedir el crédito; liquidación muestra cada % usado
+{seller();run("ui.cart=[{prod:t9.id,qty:2,src:'consig',priceReq:''}];ui.credito=true;ui.clienteNombre='Toño';ui.creditoPaga=0;render()");
+ run("S.priceRequests.push({id:'pqx',user:me.id,prod:t9.id,qty:2,precioNormal:t9.precio,precio:15000,fecha:now(),estado:'pendiente',resueltoPor:'',resueltoEn:0,saleId:''});ui.cart[0].priceReq='pqx';render()");
+ assert(root.innerHTML.includes('Primero Luis tiene que responder el precio'));const n=run("S.creditRequests.length");run("requestCredit()");assert.equal(run("S.creditRequests.length"),n,'no pide crédito con precio pendiente');
+ run("S.priceRequests.find(r=>r.id==='pqx').estado='cancelada';ui.cart=[];ui.credito=false;ui.clienteNombre=''");admin();
+ const L=JSON.parse(run("JSON.stringify(liqCalc('prx','',''))"));assert.deepEqual(L.pcts,[10,12.5,15]);assert.equal(run("liqPctTxt(liqCalc('prx','',''))"),'10%, 12,5% y 15%');
+ assert.equal(run("moveCat({tipo:'Cambia comisión de consignación'})"),'Precios y productos');}
+// cuenta del productor: comisión para la bodega, el resto se le debe hasta pagar la liquidación
+{const A=JSON.parse(run("JSON.stringify(producerAccount('prx'))"));assert.equal(A.vendido,A.comision+A.suParte);assert.equal(A.debe,A.suParte);
+ run("lf={prod:'prx',desde:'',hasta:''};saveLiq();closeModal();S.liqs.at(-1).pagada=now();S.liqs.at(-1).medio='transferencia'");assert.equal(run("producerAccount('prx').debe"),0,'pagada la liquidación ya no se le debe');
+ run("view='bal';render()");assert(root.innerHTML.includes('Parte de los productores')&&root.innerHTML.includes('Tu comisión'));run("view='prod';render()");assert(root.innerHTML.includes('Cuenta de consignación'));}
+// cierre de caja: separa la plata de consignación (ganancia de la bodega / plata del proveedor)
+{seller();run("view='caja';render()");assert(root.innerHTML.includes('Separación de la plata')&&root.innerHTML.includes('Plata del proveedor'),'el cierre separa las platas');
+ const x=JSON.parse(run("JSON.stringify(shiftSplit(S.sales.filter(s=>s.vendedor===me.id&&activeFinancialSale(s)&&!s.cierre)))"));assert.equal(x.consig,x.comision+x.deProductores);assert(x.consig>0);
+ const qs3=context.document.querySelector;context.document.querySelector=q=>q==='#root'?root:q==='#opening'?{value:'0'}:q==='#dec'?{value:'0'}:qs3(q);run("closeShift()");context.document.querySelector=qs3;
+ const c=JSON.parse(run("JSON.stringify(S.closures.at(-1))"));assert.equal(c.comision,x.comision);assert.equal(c.deProductores,x.deProductores);
+ admin();run("view='dash';render()");assert(root.innerHTML.includes('consignación: ganancia'),'Luis ve la separación al aprobar');}
+console.log('OK comisión en el punto de venta: 10% fija, admin la deja fija, vendedor con autorización y solo esa venta');}
+}

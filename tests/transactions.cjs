@@ -73,6 +73,13 @@ reset();run('s=registerSaleCommand(draft);me=S.users[1]');assert.throws(()=>run(
 run('me=S.users[0];s=S.sales[0];s.vendedor="seller";localStorage.setItem(KEY,JSON.stringify(S));me=S.users[1];requestReversalCommand(s.id,"cliente solicita")');assert.equal(run('s.solicitud'),'cliente solicita');assert.equal(run('prodStock("p")'),14);
 run('me=S.users[0];go("fiscal")');assert(!root.innerHTML.includes('Control tributario'));assert(!run('menu().some(x=>x.id==="fiscal")'));
 console.log('OK seller/admin permissions, traceable request, fiscal module removed');
+reset();run('me=S.users[1];globalThis.s=registerSaleCommand({...draft,user:"seller"});me=S.users[0];reverseSaleCommand(s.id,"Cliente devuelve",true);confirmRefundCommand(S.refunds[0].id,"devuelto por el vendedor")');
+assert.equal(run('S.refunds[0].confirmedBy'),'admin');assert.equal(run('S.refunds[0].cashier'),'seller');
+assert.equal(run('moneyEntries().filter(e=>e.user==="seller").reduce((n,e)=>n+e.monto,0)'),0);assert.equal(run('moneyEntries().filter(e=>e.user==="admin").length'),0);
+ctx.document.querySelector=q=>q==='#dec'?{value:'0'}:q==='#root'?root:null;run('closeShift()');assert.equal(run('S.closures.length'),0);
+run('me=S.users[1];closeShift()');assert.equal(run('S.closures.length'),1);assert.equal(run('S.closures[0].esperado'),0);assert.equal(run('S.closures[0].diferencia'),0);
+run('delete S.refunds[0].cashier');assert.equal(run('refundCashier(S.refunds[0])'),'seller');
+console.log('OK refund confirmed by admin comes out of the selling seller\'s cash drawer');
 reset();run('S.cfg.modeloBoleta="siempre_boleta";s=registerSaleCommand({...draft,payments:[{medio:"tarjeta",monto:200,reference:"term:1"}]})');assert.equal(run('s.fiscalDocs[0].state'),'pendiente_conciliacion');
 assert.throws(()=>run('registerSaleCommand({...draft,key:"new-key",payments:[{medio:"tarjeta",monto:200,reference:"term:1"}]})'),/referencia/);assert.equal(run('S.sales.length'),1);
 reset();run('S.cfg.modeloBoleta="siempre_boleta";S.cfg.modeloReferencia="declared";s=registerSaleCommand({...draft,payments:[{medio:"tarjeta",monto:200,reference:"term:2"}]})');assert.deepEqual(value('s.fiscalDocs.map(d=>[d.kind,d.amount])'),[['boleta',200]]);

@@ -1,7 +1,7 @@
 /* Local transaction workflow. All tax/payment gateways are deliberately disconnected. */
 let checkoutDraft=null,checkoutBusy=false;
 function ensureWorkflowState(){
-  for(const key of ['operations','refunds','adjustments','fiscalEvents','clients','creditPayments','creditRequests','priceRequests'])S[key]??=[];
+  for(const key of ['operations','refunds','adjustments','fiscalEvents','clients','creditPayments','creditRequests','priceRequests','abonoRequests','comRequests'])S[key]??=[];
   S.workflowRevision??=0;S.workflowSchema=1;
 }
 function workflowAdmin(){if(!me||!me.activo||me.rol!=='admin')throw new Error('Esta acción requiere administrador.');}
@@ -71,7 +71,7 @@ function queueFiscalIntent(s,doc,kind='emitir'){
 }
 function registerSaleCommand(draft){
   workflowUser();if(!draft?.key)throw new Error('Confirmación de venta no válida.');
-  const fingerprint=JSON.stringify({user:draft.user,items:draft.items,documento:draft.documento,receptor:draft.receptor,payments:draft.payments,clienteNombre:draft.clienteNombre||'',creditReq:draft.creditReq||''});
+  const fingerprint=JSON.stringify({user:draft.user,items:draft.items,documento:draft.documento,receptor:draft.receptor,payments:draft.payments,clienteNombre:draft.clienteNombre||'',creditReq:draft.creditReq||'',comision:draft.comision??null,comReq:draft.comReq||''});
   const old=S.sales.find(s=>s.commandKey===draft.key);
   if(old){if(old.commandFingerprint!==fingerprint||old.vendedor!==me.id)throw new Error('La clave de operación ya corresponde a otra venta.');return old;}
   if(draft.user!==me.id||draft.paymentConfirmed!==true)throw new Error('Confirma primero que recibiste el pago.');
@@ -93,7 +93,11 @@ function registerSaleCommand(draft){
       if(me.rol!=='admin'){autorizacion=creditReq(draft.creditReq);if(!creditRequestMatches(autorizacion,{user:me.id,nombre,monto:fiado,total}))throw new Error('El crédito necesita la autorización de Luis.');}
       cliente=resolveClient(nombre);
     }
+    // comisión de consignación: la del sistema, o la que Luis autorizó para esta venta
+    let comAut=null;const com=draft.comision??null;
+    if(com!=null&&com!==comBase()){if(me.rol==='admin')throw new Error('La comisión cambió. Vuelve a revisar la venta.');comAut=comReq(draft.comReq);if(!comRequestMatches(comAut,me.id)||comAut.pct!==com)throw new Error('La comisión necesita la autorización de Luis.');}
     const s=makeSale({...draft,vendedor:me.id,pago:'efectivo',cliente,silent:true});
+    if(comAut){comAut.estado='usada';comAut.saleId=s.id;s.comisionAutorizadaPor=comAut.resueltoPor}
     if(autorizacion){autorizacion.estado='usada';autorizacion.saleId=s.id;s.creditoAutorizadoPor=autorizacion.resueltoPor}
     especiales.forEach(r=>{const live=priceReq(r.id);live.estado='usada';live.saleId=s.id;const ln=s.lineas.find(l=>l.prod===live.prod&&l.precio===live.precio&&!l.precioAutorizadoPor);if(ln)ln.precioAutorizadoPor=live.resueltoPor});
     s.lineas.filter(l=>l.precioNormal&&!l.precioAutorizadoPor).forEach(l=>{l.precioAutorizadoPor=me.id});
@@ -111,13 +115,14 @@ function registerSaleCommand(draft){
 }
 function checkoutItems(){
   // precio especial (autorizado por Luis o puesto por el admin): la línea lleva el precio y la solicitud que lo respalda
-  const items=ui.cart.map(c=>{const precio=cartPrice(c),esp=precio!==P(c.prod)?.precio;return {prod:c.prod,qty:c.qty,precio,...(esp?{precioEsp:true,priceReq:c.priceReq||''}:{})}});
+  const items=ui.cart.map(c=>{const precio=cartPrice(c),esp=precio!==P(c.prod)?.precio;return {prod:c.prod,qty:c.qty,...(c.src?{src:c.src}:{}),...(c.gam?{gam:c.gam}:{}),precio,...(esp?{precioEsp:true,priceReq:c.priceReq||''}:{})}});
   const g=gamCalc();if(g.net)items.push({prod:gamId(),qty:g.net,precio:gamProd().precio});return items;
 }
 function prepareCheckout(){
   try{
     workflowUser();const g=gamCalc();if(checkoutBusy||!ui.cart.length&&g.net<=0)return;
     if(ui.cart.some(c=>priceReq(c.priceReq)?.estado==='pendiente'))throw new Error('Hay un precio esperando la autorización de Luis.');
+    if(cartHasConsig()&&comReq(ui.comReq)?.estado==='pendiente')throw new Error('La comisión está esperando la autorización de Luis.');
     const items=checkoutItems();const total=items.reduce((n,i)=>n+itemTotal(i),0);
     const gErr=gamError(g,total-g.monto);if(gErr)throw new Error(gErr);
     const documento=ui.documento||'boleta';if(documento==='factura'){const error=invoiceRecipientError(ui.receptor);if(error)throw new Error(error);}
@@ -128,10 +133,11 @@ function prepareCheckout(){
       payments.push({id:'p'+payments.length,medio:'credito',monto:credit.monto,reference:'',voucherTax:false});
     }
     const fiado=credit?payments[payments.length-1]:null,known=credit?findClientByName(credit.nombre):null;
-    checkoutDraft={key:'venta:'+uid('checkout')+':'+now(),user:me.id,items,documento,receptor:documento==='factura'?{...ui.receptor}:null,payments,total,gamelas:g.lleva||g.trae?{lleva:g.lleva,trae:g.trae}:null,clienteNombre:credit?.nombre||'',creditReq:credit&&!isAdmin()?ui.creditReq:'',paymentConfirmed:false};
+    checkoutDraft={key:'venta:'+uid('checkout')+':'+now(),user:me.id,items,documento,receptor:documento==='factura'?{...ui.receptor}:null,payments,total,gamelas:g.lleva||g.trae?{lleva:g.lleva,trae:g.trae}:null,clienteNombre:credit?.nombre||'',creditReq:credit&&!isAdmin()?ui.creditReq:'',...(cartHasConsig()?{comision:saleCom(),comReq:isAdmin()?'':ui.comReq||''}:{}),paymentConfirmed:false};
     modal(`<h2>Revisar y confirmar venta</h2><p class="muted">Todavía no se ha registrado la venta ni se ha descontado stock.</p>
       <div class="scroll"><table class="tbl"><thead><tr><th>Producto</th><th>Cantidad</th><th class="right">Importe</th></tr></thead><tbody>${items.map(i=>`<tr><td>${esc(lineName(i))}</td><td>${qtyFmt(i.qty,P(i.prod).unidad)} × ${clp(i.precio)}</td><td class="right num">${clp(itemTotal(i))}</td></tr>`).join('')}</tbody></table></div>
       ${g.lleva||g.trae?`<p><b>Gamelas:</b> se lleva ${g.lleva}, trae ${g.trae} → ${g.net>0?'se cobran '+g.net:g.net<0?'se descuentan '+(-g.net):'sin cobro'}</p>`:''}
+      ${checkoutDraft.comision!=null?`<p><b>Comisión consignación:</b> ${pctTxt(checkoutDraft.comision)}${checkoutDraft.comision!==comBase()?' · autorizada por Luis solo para esta venta':''}</p>`:''}
       <p><b>Documento:</b> ${documento==='factura'?'Factura · '+esc(ui.receptor.razonSocial)+' · RUT '+esc(ui.receptor.rut)+' (la emite la contadora)':'Boleta'}</p>
       ${payments.map(p=>`<p>${receiptPayment(p.medio)}${p.medio==='credito'?' · '+esc(credit.nombre):''}: <b>${clp(p.monto)}</b>${p.reference?' · Ref. '+esc(p.reference):''}</p>`).join('')}
       ${fiado?`<p class="muted">El crédito no entra a la caja: queda anotado a ${esc(credit.nombre)}${known?'':' (cliente nuevo)'}, que pasa a deber ${clp((known?creditBalance(known.id):0)+fiado.monto)}.</p>`:''}
@@ -149,7 +155,7 @@ function commitCheckout(key){
   checkoutBusy=true;const button=document.querySelector('#checkout-submit');if(button)button.disabled=true;
   try{
     const s=registerSaleCommand({...checkoutDraft,paymentConfirmed:true});checkoutDraft=null;
-    ui.cart=[];ui.pago='efectivo';ui.pagoEf=0;ui.documento='boleta';ui.receptor={};ui.mixFirst='efectivo';ui.mixedSecond='transferencia';ui.credito=false;ui.creditoPaga=0;ui.clienteNombre='';ui.creditReq='';ui.gamExtra=0;ui.gamTrae=0;
+    ui.cart=[];ui.comReq='';ui.pago='efectivo';ui.pagoEf=0;ui.documento='boleta';ui.receptor={};ui.mixFirst='efectivo';ui.mixedSecond='transferencia';ui.credito=false;ui.creditoPaga=0;ui.clienteNombre='';ui.creditReq='';ui.gamExtra=0;ui.gamTrae=0;
     closeModal();render();receipt(s.id);
   }catch(error){toast(error.message)}finally{checkoutBusy=false;if(button?.isConnected)button.disabled=false;}
 }
@@ -165,10 +171,12 @@ function revenueEntries(){
   }
   return result;
 }
+// la devolución sale de la caja del vendedor que hizo la venta, aunque la confirme el admin
+function refundCashier(r){return r.cashier||S.sales.find(s=>s.id===r.saleId)?.vendedor||r.confirmedBy}
 function moneyEntries(){
   ensureWorkflowState();const result=[];
   S.sales.filter(activeFinancialSale).forEach(s=>s.pagos.forEach(p=>result.push({saleId:s.id,user:s.vendedor,fecha:s.fecha,medio:p.medio,monto:p.monto})));
-  S.refunds.filter(r=>r.state==='confirmada_manual').forEach(r=>result.push({saleId:r.saleId,user:r.confirmedBy,fecha:r.confirmedAt,medio:r.medio,monto:-r.amount}));
+  S.refunds.filter(r=>r.state==='confirmada_manual').forEach(r=>result.push({saleId:r.saleId,user:refundCashier(r),fecha:r.confirmedAt,medio:r.medio,monto:-r.amount}));
   // abonos de créditos: plata que entra a la caja de quien lo recibe, el día que se paga
   (S.creditPayments||[]).filter(a=>!a.anulado).forEach(a=>result.push({saleId:'',abono:a.id,user:a.user,fecha:a.fecha,medio:a.medio,monto:a.monto}));
   return result;
@@ -231,7 +239,7 @@ function confirmRefundCommand(id,reference){
     const r=S.refunds.find(x=>x.id===id);if(!r)throw new Error('Devolución no encontrada.');if(r.state==='confirmada_manual'){if(r.reference!==reference)throw new Error('La devolución ya se concilió con otra referencia.');return r;}
     if(S.refunds.some(other=>other.id!==r.id&&other.state==='confirmada_manual'&&other.medio===r.medio&&other.reference===reference))throw new Error('Esa referencia de devolución ya fue conciliada.');
     r.reference=reference;r.state='confirmada_manual';r.confirmedAt=now();r.confirmedBy=me.id;
-    const s=workflowSale(r.saleId);s.paymentState=S.refunds.filter(x=>x.saleId===s.id).every(x=>x.state==='confirmada_manual')?'devuelto':'devolucion_pendiente';
+    const s=workflowSale(r.saleId);r.cashier=s.vendedor;s.paymentState=S.refunds.filter(x=>x.saleId===s.id).every(x=>x.state==='confirmada_manual')?'devuelto':'devolucion_pendiente';
     workflowEvent(s,'devolucion_conciliada_manual',r.medio+' '+r.amount+' · '+reference);return r;
   });
 }
@@ -308,9 +316,9 @@ function workflowDetail(id){
     <h3>Historial</h3><div class="rows">${(s.workflowEvents||[]).map(e=>`<div><div class="grow"><b>${esc(e.type)}</b><span>${fdt(e.at)} · ${esc(U(e.user).nombre)} · ${esc(e.detail)}</span></div></div>`).join('')||'<p>Sin eventos nuevos.</p>'}</div>
     <div class="acts"><button class="btn ghost" onclick="closeModal()">Cerrar</button></div>`,true);
 }
-function reserveFifo(prodId,qty,until,reserved){
+function reserveFifo(prodId,qty,until,reserved,src){
   const out=[];let rest=qty;
-  for(const lot of prodLots(prodId)){
+  for(const lot of (src?srcLots(prodId,src):prodLots(prodId))){
     if(rest<=1e-9)break;const available=lotStock(lot.id,until)-(reserved.get(lot.id)||0);if(available<=1e-9)continue;
     const take=Math.min(rest,available);out.push({lot:lot.id,qty:take});reserved.set(lot.id,(reserved.get(lot.id)||0)+take);rest-=take;
   }
