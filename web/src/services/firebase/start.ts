@@ -39,6 +39,8 @@ async function onSignedOut(): Promise<void> {
   unsubscribe?.();
   unsubscribe = null;
   if (current) { await current.close(); current = null; }
+  // primero la sesión: si quedara `meId` sin usuario, App llamaría a logout() en bucle (React #185)
+  store.setSession(null);
   store.init(signedOutStore, { ...emptyState(), users: [] });
 }
 

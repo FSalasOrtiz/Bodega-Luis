@@ -130,7 +130,10 @@ export class FirestoreDataStore implements DataStore {
   /** Tras un reinicio de datos desde otro dispositivo: borra la copia local y recarga. */
   private async resetLocalCopy(): Promise<void> {
     Object.keys(localStorage).filter((k) => k.startsWith('bodegaLV.sync.') || k.startsWith('bodegaLV.epoch.')).forEach((k) => localStorage.removeItem(k));
+    const db = this.db;
     await this.close();
+    // sin esto, la caché persistente conserva los documentos borrados por el reinicio y vuelven a aparecer
+    if (db) await clearIndexedDbPersistence(db).catch(() => undefined);
     location.reload();
   }
 

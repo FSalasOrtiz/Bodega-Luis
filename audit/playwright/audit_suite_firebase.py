@@ -145,6 +145,18 @@ def checkout(c, confirm=True):
     return {'opened': True, 'toast': c.toast()}
 
 
+def wait_js(c, expr, timeout=8000):
+    """Firebase: espera a que la escritura remota se refleje (expr verdadera) antes de leer."""
+    t0 = time.time()
+    while (time.time() - t0) * 1000 < timeout:
+        try:
+            v = c.js(expr)
+            if v: return v
+        except Exception: pass
+        c.page.wait_for_timeout(200)
+    return c.js(expr)
+
+
 def close_modals(c):
     for _ in range(3):
         if c.modal_open():
@@ -678,15 +690,16 @@ def _(b):
 @case('HIS-01', 'Historial', 'Anular venta (admin): exige motivo, devuelve stock si se indica, deja compensación')
 def _(b):
     c = Ctx(b); c.login('luis'); p = c.page; c.go('pos')
-    pos_add(c, 'TOM-C9', 2); pos_confirm_add(c); checkout(c); close_modals(c)
+    n0 = c.js('S.sales.length'); pos_add(c, 'TOM-C9', 2); pos_confirm_add(c); checkout(c)
+    wait_js(c, f'S.sales.length>{n0}'); close_modals(c)
     sid = c.js("S.sales.at(-1).id")
     sale = c.js(f"S.sales.find(s=>s.id==='{sid}')"); prod = sale['lineas'][0]['prod']; q = sum(l['qty'] for l in sale['lineas'] if l['prod'] == prod)
     s0 = c.js(f"prodStock('{prod}')")
     c.js(f"voidSale('{sid}')"); p.wait_for_timeout(200)
     c.js(f"approveSaleReversal('{sid}')"); p.wait_for_timeout(200); t_empty = c.toast()
     c.js(f"voidSale('{sid}')"); p.wait_for_timeout(200)
-    p.fill('#rev-reason', 'Cliente devolvió'); p.check('#rev-stock'); c.js(f"approveSaleReversal('{sid}')"); p.wait_for_timeout(300)
-    t = c.toast(); s1 = c.js(f"prodStock('{prod}')"); st = c.js(f"S.sales.find(s=>s.id==='{sid}').reversal")
+    p.fill('#rev-reason', 'Cliente devolvió'); p.check('#rev-stock'); c.js(f"approveSaleReversal('{sid}')")
+    wait_js(c, f"S.sales.find(s=>s.id==='{sid}').reversal"); t = wait_js(c, "document.querySelector('.toast')?.textContent||''", 3000); s1 = c.js(f"prodStock('{prod}')"); st = c.js(f"S.sales.find(s=>s.id==='{sid}').reversal")
     neg = c.js(f"revenueEntries().filter(e=>e.id==='{sid}'||e.saleId==='{sid}'||e.ref==='{sid}').map(e=>e.entrySign)")
     c.close()
     check(st is not None and abs(s1 - (s0 + q)) < 1e-9 and 'obligatorio' in t_empty.lower(), {'stock': [s0, s1, q], 'sin_motivo': t_empty, 'toast': t, 'reversal': bool(st)})
@@ -698,8 +711,8 @@ def _(b):
     c = Ctx(b); c.login('luis'); p = c.page
     sid = c.js("S.sales.filter(s=>vig(s)&&!s.reversal&&s.lineas.length).at(-1).id")
     c.js(f"voidSale('{sid}')"); p.wait_for_timeout(200)
-    p.fill('#rev-reason', 'Cliente devolvió'); p.check('#rev-stock'); c.js(f"approveSaleReversal('{sid}')"); p.wait_for_timeout(300)
-    t = c.toast(); st = c.js(f"S.sales.find(s=>s.id==='{sid}').reversal.state")
+    p.fill('#rev-reason', 'Cliente devolvió'); p.check('#rev-stock'); c.js(f"approveSaleReversal('{sid}')")
+    wait_js(c, f"S.sales.find(s=>s.id==='{sid}').reversal"); t = c.toast(); st = c.js(f"S.sales.find(s=>s.id==='{sid}').reversal?.state")
     est = c.js(f"S.sales.find(s=>s.id==='{sid}').estado"); c.close()
     check(not (t == 'Venta anulada.' and st != 'completada'),
           f'Mensaje "{t}" pero la reversión queda en "{st}" (estado venta "{est}") y el stock no vuelve: el mensaje no refleja el resultado')
@@ -764,10 +777,10 @@ def _(b):
     p.get_by_role('button', name='Declarar y cerrar turno').click(); p.wait_for_timeout(200); t_empty = c.toast()
     exp = p.locator('#closing-expected').inner_text()
     p.fill('#dec', '-5'); p.get_by_role('button', name='Declarar y cerrar turno').click(); p.wait_for_timeout(200); t_neg = c.toast()
-    p.fill('#dec', '100000'); p.get_by_role('button', name='Declarar y cerrar turno').click(); p.wait_for_timeout(300); t = c.toast()
-    cl = c.js('S.closures.at(-1)')
+    n0 = c.js('S.closures.length'); p.fill('#dec', '100000'); p.get_by_role('button', name='Declarar y cerrar turno').click(); p.wait_for_timeout(300); t = c.toast()
+    wait_js(c, f'S.closures.length>{n0}'); cl = c.js('S.closures.at(-1)')
     c.js('logout()'); c.login('luis'); dash = p.locator('main').inner_text()
-    c.js(f"approveClose('{cl['id']}')"); p.wait_for_timeout(250); ap = c.js(f"S.closures.find(x=>x.id==='{cl['id']}').aprobado")
+    c.js(f"approveClose('{cl['id']}')"); wait_js(c, f"S.closures.find(x=>x.id==='{cl['id']}').aprobado"); ap = c.js(f"S.closures.find(x=>x.id==='{cl['id']}').aprobado")
     c.close()
     check(cl['vendedor'] != 'u1' and not cl.get('aprobado') and ap and 'válido' in t_empty, {'vacío': t_empty, 'neg': t_neg, 'ok': t})
     return {'esperado': exp, 'vacío': t_empty, 'negativo': t_neg, 'ok': t, 'diferencia': cl['diferencia'], 'aviso_dash': 'por aprobar' in dash, 'aprobado_por': ap}
@@ -776,8 +789,8 @@ def _(b):
 @case('CAJA-02', 'Cierre de caja', 'Segundo cierre sin movimientos nuevos se rechaza', 'negativo')
 def _(b):
     c = Ctx(b); c.login('gonzalo'); c.go('caja'); p = c.page
-    p.fill('#dec', '0'); p.get_by_role('button', name='Declarar y cerrar turno').click(); p.wait_for_timeout(250)
-    c.go('caja'); dis = p.get_by_role('button', name='Declarar y cerrar turno').is_disabled()
+    n0 = c.js('S.closures.length'); p.fill('#dec', '0'); p.get_by_role('button', name='Declarar y cerrar turno').click()
+    wait_js(c, f'S.closures.length>{n0}'); c.go('caja'); dis = p.get_by_role('button', name='Declarar y cerrar turno').is_disabled()
     err = c.js("(()=>{try{document.querySelector('#dec').value='0';closeShift();return document.querySelector('.toast')?.textContent}catch(e){return e.message}})()")
     c.close()
     check(dis, {'boton_deshabilitado': dis, 'msg': err})
@@ -834,12 +847,12 @@ def _(b):
     c = Ctx(b); c.login('luis'); c.go('prod'); p = c.page
     c.js("editProducer()"); p.wait_for_timeout(200); c.js("saveProducer('')"); p.wait_for_timeout(150); t0 = c.toast(); close_modals(c)
     c.js("editProducer()"); p.wait_for_timeout(200); p.fill('#p_n', 'Productor QA'); p.fill('#p_r', '11.111.111-1')
-    c.js("saveProducer('')"); p.wait_for_timeout(200)
-    ok = c.js("!!S.producers.find(x=>x.nombre==='Productor QA')"); close_modals(c)
+    c.js("saveProducer('')")
+    ok = wait_js(c, "!!S.producers.find(x=>x.nombre==='Productor QA')"); close_modals(c)
     l0 = c.js('S.liqs.length')
     prid = c.js("S.producers.find(x=>x.tipo==='productor').id")
     pname = c.js(f"S.producers.find(x=>x.id==='{prid}').nombre"); p.locator(f'[aria-label="Ver ficha de {pname}"]').click(); p.wait_for_timeout(300)
-    p.locator('main button', has_text='Generar liquidación').first.click(); p.wait_for_timeout(300)
+    p.locator('main button', has_text='Generar liquidación').first.click(); wait_js(c, f'S.liqs.length>{l0}')
     close_modals(c)
     p.locator('main button', has_text='Generar liquidación').first.click(); p.wait_for_timeout(300)
     dup = c.js(f"S.liqs.filter(l=>l.prod==='{prid}').length")
@@ -912,7 +925,7 @@ def _(b):
     c = Ctx(b); c.login('luis'); c.go('users'); p = c.page
     p.fill('#s_n', 'Empresa QA'); p.get_by_role('button', name='Guardar ajustes').click(); p.wait_for_timeout(200)
     t = c.toast(); n = c.js('S.cfg.nombre')
-    c.js('resetData(true)'); p.wait_for_timeout(300)
+    c.js('resetData(true)'); p.wait_for_timeout(1500); wait_js(c, 'typeof S!=="undefined"&&S.sales.length===0&&!!me', 15000)
     after = c.js('[S.sales.length,S.products.length,S.users.length,!!me]'); c.close()
     check(n == 'Empresa QA' and after[0] == 0 and after[1] > 0, {'toast': t, 'cfg': n, 'reset': after})
     return {'toast': t, 'tras_reinicio': {'ventas': after[0], 'productos': after[1], 'usuarios': after[2], 'sesion': after[3]}}
@@ -1032,6 +1045,16 @@ def _(b):
 
 
 # ================================================================ RUNNER
+# Casos de la suite local cuya preparación no es posible (ni deseable) en modo Firebase.
+NO_APLICA = {
+    'AUTH-06': 'Prepara datos escribiendo usuarios desde el navegador; las reglas de Firestore lo rechazan (correcto). Desactivación cubierta por saveUser y tests de reglas.',
+    'USR-03': 'Igual que AUTH-06: escribe usuarios desde el navegador; en Firebase solo la Cloud Function saveUser puede (y protege al último admin).',
+    'STO-03': 'Simula dos pestañas modificando datos de usuario desde el navegador; rechazado por las reglas. Concurrencia cubierta por STO-04 (_v en transacciones).',
+    'STO-01': 'Mide localStorage; en modo Firebase los datos viven en Firestore/IndexedDB, no en localStorage.',
+    'NET-01': 'Bloquea *.googleapis.com, que en modo Firebase es el propio backend; la prueba de CDN externos aplica al modo local.',
+}
+
+
 def main():
     with sync_playwright() as p:
         b = p.chromium.launch(headless=True)
@@ -1043,8 +1066,11 @@ def main():
                 r = subprocess.run('npm --prefix web run reset:emulator', shell=True, capture_output=True, text=True)
                 if 'Listo:' in r.stdout: break
             else:
-                print('     !! no se pudo reiniciar el emulador', flush=True)
+                print('     !! no se pudo reiniciar el emulador (reinicia los emuladores):', (r.stdout + r.stderr)[-300:], flush=True); break
             t0 = time.time(); rec = {'id': cid, 'modulo': module, 'caso': title, 'tipo': kind}
+            if cid in NO_APLICA:
+                rec.update(estado='NO_APLICA', detalle=NO_APLICA[cid], seg=0); results.append(rec)
+                print(f"{'NO_APLICA':13} {cid:8} {title}", flush=True); continue
             try:
                 detail = fn(b); rec.update(estado='APROBADA', detalle=detail)
             except Fail as e:
