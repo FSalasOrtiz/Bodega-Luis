@@ -1,0 +1,21 @@
+<!doctype html>
+<html lang="es-CL">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, interactive-widget=resizes-content">
+<meta name="theme-color" content="#e8ebd9">
+<link rel="icon" type="image/png" href="/brand/favicon.png">
+<title>Bodega Lo Valledor</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<script>
+  // Tema antes del primer render (igual que el prototipo): evita parpadeo.
+  (function(){var t=null;try{t=localStorage.getItem('bodegaLV.theme')}catch(e){}if(t!=='dark'&&t!=='mint')t=matchMedia('(prefers-color-scheme: dark)').matches?'dark':'mint';document.documentElement.dataset.theme=t;})();
+</script>
+</head>
+<body>
+<a class="skip-link" href="#main-content">Ir al contenido</a>
+<div id="root"></div>
+<script type="module" src="/src/main.tsx"></script>
+</body>
+</html>
