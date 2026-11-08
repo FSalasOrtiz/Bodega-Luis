@@ -54,8 +54,8 @@ export const store = {
     publish({ S: fixed, ready: true });
   },
   /** Datos que llegan de otro dispositivo o pestaña. */
-  applyRemote(S: State): void {
-    queue = queue.then(() => publish({ S: normalize(S) }));
+  applyRemote(S: State | (() => State)): void {
+    queue = queue.then(() => publish({ S: normalize(typeof S === 'function' ? S() : S) }));
   },
   setSession(meId: string | null, view?: View): void {
     publish({ meId, ...(view ? { view } : {}) });

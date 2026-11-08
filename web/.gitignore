@@ -8,3 +8,5 @@ dist-emulator
 .env.development
 .env.staging
 .env.production
+dist-local
+dist-emulator-app

@@ -37,7 +37,7 @@ export class FirestoreDataStore implements DataStore {
   private docs = new Map<CollectionName, Map<string, Doc>>();
   private meta: { cfg?: State['cfg']; families?: string[]; epoch?: number } = {};
   private offs: Unsubscribe[] = [];
-  private onRemote: ((s: State) => void) | null = null;
+  private onRemote: ((s: State | (() => State)) => void) | null = null;
   private flushTimer: ReturnType<typeof setTimeout> | null = null;
   private ready = false;
 
@@ -149,10 +149,10 @@ export class FirestoreDataStore implements DataStore {
 
   private scheduleFlush(): void {
     if (!this.ready || this.flushTimer) return;
-    this.flushTimer = setTimeout(() => { this.flushTimer = null; this.onRemote?.(this.buildState()); }, 50);
+    this.flushTimer = setTimeout(() => { this.flushTimer = null; this.onRemote?.(() => this.buildState()); }, 50);
   }
 
-  subscribe(onRemote: (s: State) => void): () => void {
+  subscribe(onRemote: (s: State | (() => State)) => void): () => void {
     this.onRemote = onRemote;
     return () => { this.onRemote = null; };
   }
@@ -173,7 +173,7 @@ export class FirestoreDataStore implements DataStore {
     const newSale = changes.set.find((s) => s.col === 'sales' && !prevById('sales', s.id));
     if (changes.set.length + changes.del.length + deltas.size + 2 > 490) throw new Error('La operación es demasiado grande para guardarla de una vez.');
     try {
-      return await runTransaction(db, async (tx) => {
+      const fixups = await runTransaction(db, async (tx) => {
         const fixups: Fixup[] = [];
         let saleNum: number | null = null;
         // ----- lecturas -----
@@ -230,6 +230,17 @@ export class FirestoreDataStore implements DataStore {
         }
         return fixups;
       });
+      // la copia interna refleja de inmediato lo confirmado (si no, un aviso del servidor anterior a esta escritura lo revertiría en pantalla)
+      const now = Date.now();
+      for (const s of changes.set) {
+        const fx = fixups.find((f) => f.col === s.col && f.id === s.id);
+        const m = this.docs.get(s.col) || new Map<string, Doc>();
+        this.docs.set(s.col, m);
+        m.set(s.id, { ...(s.data as Doc), ...(fx?.patch || {}), _u: now } as Doc);
+      }
+      for (const d of changes.del) this.docs.get(d.col)?.set(d.id, { id: d.id, _deleted: true, _v: ((prevById(d.col, d.id)?._v ?? 0) + 1), _u: now });
+      if (changes.meta) this.meta = { ...this.meta, cfg: changes.meta.cfg, families: changes.meta.families };
+      return fixups;
     } catch (e) {
       throw friendlyError(e);
     }

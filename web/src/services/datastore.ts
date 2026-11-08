@@ -26,7 +26,8 @@ export interface DataStore {
    */
   commit(changes: ChangeSet, next: State, prev: State): Promise<Fixup[] | void>;
   /** Avisa cuando otro dispositivo o pestaña cambia los datos. Devuelve la función para dejar de escuchar. */
-  subscribe(onRemote: (s: State) => void): () => void;
+  /** Recibe el estado o una función que lo construye en el momento de aplicarlo (evita aplicar una foto vieja). */
+  subscribe(onRemote: (s: State | (() => State)) => void): () => void;
   /** Reemplaza todos los datos (reinicio). Solo administrador. */
   replaceAll(s: State): Promise<void>;
 }

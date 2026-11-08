@@ -16,7 +16,7 @@
     "build:demo": "tsc -b && vite build --mode local-demo --outDir dist-e2e",
     "seed:emulator": "FIRESTORE_EMULATOR_HOST=127.0.0.1:8080 FIREBASE_AUTH_EMULATOR_HOST=127.0.0.1:9099 tsx scripts/seed-firebase.ts --project demo-bodega",
     "test:rules": "vitest run --config vitest.rules.config.ts",
-    "reset:emulator": "curl -s -X DELETE 'http://127.0.0.1:8080/emulator/v1/projects/demo-bodega/databases/(default)/documents' >/dev/null && curl -s -X DELETE 'http://127.0.0.1:9099/emulator/v1/projects/demo-bodega/accounts' >/dev/null && npm run seed:emulator -- --demo"
+    "reset:emulator": "bash scripts/reset-emulator.sh"
   },
   "dependencies": {
     "firebase": "^13.2.0",

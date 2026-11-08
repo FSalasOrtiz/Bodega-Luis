@@ -69,7 +69,16 @@ const OPERATIONAL = ['producers', 'receptions', 'lots', 'moves', 'stock', 'sales
 export const resetData = onCall({ timeoutSeconds: 540, memory: '512MiB' }, async (req: CallableRequest<{ confirm?: string }>) => {
   const actor = await requireAdmin(req);
   if (req.data?.confirm !== 'BORRAR') throw new HttpsError('failed-precondition', 'Falta la confirmación.');
-  for (const col of OPERATIONAL) await db.recursiveDelete(db.collection(col));
+  // borrado por lotes (más robusto que recursiveDelete con otros clientes conectados)
+  for (const col of OPERATIONAL) {
+    for (;;) {
+      const snap = await db.collection(col).limit(400).get();
+      if (snap.empty) break;
+      const batch = db.batch();
+      snap.docs.forEach((d) => batch.delete(d.ref));
+      await batch.commit();
+    }
+  }
   const a = audit(actor.id, 'Reinicia datos', 'Bodega', '', 'operaciones borradas');
   await db.doc('meta/app').set({ epoch: FieldValue.increment(1), _u: FieldValue.serverTimestamp() }, { merge: true });
   await db.doc('meta/counters').set({ saleNum: 1000, _u: FieldValue.serverTimestamp() });
