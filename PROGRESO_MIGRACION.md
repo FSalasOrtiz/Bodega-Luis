@@ -1,73 +1,76 @@
 # Progreso de la migración
 
-Registro único del trabajo. Cada paso tiene un commit en la rama `migracion`. El original queda intacto en `main` con el tag `prototipo-auditado`.
+Registro único del trabajo. Cada paso tiene un commit en la rama `migracion`. El original sigue intacto en `main`, con el tag `prototipo-auditado`.
 
 | Fase | Estado | Fecha |
 |---|---|---|
-| 1. Skill y auditoría inicial | ✅ Completada | 07-11-2026 |
-| 1.5 Correcciones de la auditoría (HTML actual) | ✅ Completada | 07-11-2026 |
-| 2. React + TypeScript | ⏳ Siguiente | — |
-| 3. Firebase | ⏸ | — |
-| 4. Auditoría final | ⏸ | — |
-| 5. Publicación | ⏸ Requiere autorización explícita | — |
+| 1. Skill y auditoría inicial | ✅ | 07-11-2026 |
+| 1.5 Correcciones en el prototipo HTML | ✅ | 07-11-2026 |
+| 2. React + TypeScript | ✅ | 08-11-2026 |
+| 3. Firebase | ✅ (en emulador) | 08-11-2026 |
+| 4. Auditoría final | ✅ (`AUDITORIA_FINAL.md`) | 08-11-2026 |
+| 5. Publicación | ⏸ **Requiere tu autorización y tu cuenta de Firebase** (lista en `AUDITORIA_FINAL.md` §8) | — |
 
 ## Decisiones del cliente (07-11-2026)
 
 | Tema | Decisión |
 |---|---|
-| Contraseñas | Todos los usuarios parten con **111111**. Cada uno la cambia al implementar el sistema. Se quitan las credenciales visibles del login |
-| Foto de la guía (P-01) | Se quitó a propósito. Se mantiene solo la lectura de fotos de recepciones antiguas |
-| Créditos del vendedor (P-02) | **Se mantiene.** Si llega un cliente a pagar y Luis no está, el vendedor registra el pago y espera la autorización |
-| Motivo de merma (M-02) | **No se implementa.** Se eliminó el caso MER-03 de la suite |
-| Resto de hallazgos | Se corrigen todos |
+| Contraseñas | Todos los usuarios parten con **111111** y cada uno la cambia al implementar el sistema. Se quitaron las credenciales visibles del login |
+| Foto de la guía | Se quitó a propósito, así que no se usa Firebase Storage |
+| Créditos del vendedor | Se mantiene: el vendedor registra el pago y queda esperando la autorización de Luis |
+| Motivo de merma | No se implementa |
 | Organización y commits | A criterio del equipo, con registro en este archivo |
 
-## Historial
+## Decisiones técnicas
 
-### Fase 1. Auditoría inicial
+- **Arquitectura:**
+  - React 19 + TypeScript estricto + Vite, en `web/`.
+  - La lógica del prototipo se portó casi literal a `src/domain`, y una prueba diferencial demuestra que calcula lo mismo.
+- **Immer** (única dependencia nueva de estado): los comandos mutan un borrador, igual que el prototipo, y se obtienen exactamente los documentos que cambiaron para guardarlos en una transacción.
+- **GSAP reemplazado** por Web Animations: es la misma animación, sin CDN.
+- **Firestore:**
+  - Copia local con sincronización incremental, por costo.
+  - Una transacción por comando, con control de versión, saldo por lote y número de venta del servidor.
+  - Sin conexión no se registra nada: preferimos no vender a vender stock que no existe.
+- **Usuarios:** solo a través de la Cloud Function `saveUser`. El documento del usuario es la fuente del rol.
+- **Reiniciar datos en Firebase:** conserva usuarios, catálogo y ajustes (lo que prometía el mensaje del prototipo). No se pueden cargar datos de ejemplo en producción.
+- **Nombre de usuario:** se agregó una regla de formato (minúsculas, números, `.`, `-`, `_`), porque Firebase Auth lo usa como parte de un correo interno.
 
-**Instalación:**
+## Historial de commits
 
-- Skill `webapp-testing` en `.agents/skills/webapp-testing`, con un symlink en `.claude/skills` y `skills-lock.json`.
-- Playwright (Python) y Chromium en un entorno virtual fuera del repositorio.
-
-**Resultado:** 63 casos E2E, con 54 aprobados y 9 fallidos. Las 4 suites de Node pasaron y hubo 0 errores de consola. Detalle en `AUDITORIA_INICIAL.md`.
-
-**Commits:**
-
-- `afc28e1`: base con los cambios que estaban sin commitear (tag `prototipo-auditado`).
-- `9d0584b`: informe y suite.
-
-### Fase 1.5. Correcciones en `bodega-lo-valledor.html`
-
-| Hallazgo | Corrección |
+| Commit | Contenido |
 |---|---|
-| C-01 (parcial) | Claves iniciales 111111 para los 4 usuarios en los datos de demostración. Se quitó la línea "Prototipo · luis / …" del login. *Las claves siguen guardándose en el navegador: se resuelve en la Fase 3 con Firebase Auth* |
-| C-02 (parcial) | Control de rol dentro de cada escritura de administrador: `voidRec`, `setPrice`, `saveProduct`, `adjustStock`/`doAdjust`, `saveLiq`, `saveUser`, `saveGasto`, `delFixed`, `updFixed`, `doDelVar`, `confirmDeleteClient` y editar productor. Crear un productor desde Recepción sigue permitido al vendedor. *La garantía real llega con las reglas de Firestore (Fase 3)* |
-| A-01 | `save()` ya no traga el error: avisa "No se pudo guardar…", vuelve al último estado guardado y suprime el aviso de éxito que venía después |
-| A-02 | No se puede cambiar el rol propio (selector deshabilitado y validación al guardar). Siempre debe quedar al menos un administrador activo |
-| A-03 | Se rechaza una liquidación cuyo periodo se superpone con otra del mismo productor, y también un periodo invertido |
-| M-01 | Si la anulación queda pendiente de verificación, el mensaje lo dice en vez de "Venta anulada." |
-| M-03 | No se puede ajustar el stock de un producto sin lotes: el stock entra con una recepción. Se valida que el lote pertenezca al producto |
-| M-04 | Las columnas `.g2.stack` se apilan bajo 1000 px. El Balance se ve bien en tablet |
-| B-01 | Gamelas con decimales: se rechazan en el POS y en la recepción con un mensaje |
-| B-02 | Precio en pesos enteros, mayor que 0 y con tope de $10.000.000, al cambiar el precio y al crear o editar un producto |
-| B-03 | Ajuste: gamelas enteras y kg distinto de 0 |
-| B-04 | Montos negativos con formato `-$1.403.595` |
+| `afc28e1` | Base: cambios que estaban sin commitear (tag `prototipo-auditado`) |
+| `9d0584b` | Fase 1: auditoría, skill y suite Playwright |
+| `dd0b40e` | Fase 1.5: correcciones en el prototipo |
+| `9d1a2a0` | Fase 2: dominio tipado, store y prueba diferencial |
+| `fcd1198` | Fase 2: interfaz React de los 10 módulos |
+| `e6cb4d3` | Fase 3: Firebase (Auth, Firestore, Functions, reglas, emuladores) |
+| siguiente | Fase 4: regresión, corrección del modal, documentación y veredicto |
 
-**Pruebas:**
+## Pruebas (última ejecución)
 
-- `node tests/*.cjs`: 4 de 4 en verde. En `smoke.cjs` se actualizó la clave inicial de Samuel a 111111.
-- `audit_suite.py`: **64 casos, con 61 aprobados y 3 fallidos.** Los 3 fallidos son inherentes a guardar en el navegador y se resuelven en la Fase 3:
-  - AUTH-09: claves legibles en localStorage.
-  - AUTH-10: el rol se puede alterar en la consola.
-  - STO-04: no hay sincronización entre dispositivos.
-- Casos nuevos: BAL-02 (formato de negativos) y USR-03 (último administrador).
-- Casos endurecidos: POS-03, REC-03, INV-03, INV-04, INV-05, PRD-01 y AUTH-12.
+| Suite | Resultado |
+|---|---|
+| Prototipo `node tests/*.cjs` | 4/4 |
+| `web`: `vitest` (diferencial vs. prototipo) | 5/5 |
+| `web`: reglas de Firestore (emulador) | 20/20 |
+| `audit/playwright/audit_suite_react.py` (regresión de Fase 1 sobre React) | 64/64 |
+| `audit/playwright/firebase_smoke.py` (emulador) | 10/10 |
+| XSS React | sin ejecución |
+| `tsc` / ESLint (web y functions) | 0 errores |
 
-**Nota:** los navegadores que ya tienen datos guardados (`bodegaLV.v6`) conservan sus claves anteriores. Las claves 111111 aplican al iniciar con datos nuevos o tras "Reiniciar datos".
+## Cómo ejecutar
+
+| Qué | Comando |
+|---|---|
+| Emuladores | `npm run emulators` (raíz) |
+| Cargar datos de ejemplo | `npm --prefix web run reset:emulator` |
+| App contra los emuladores | `npm --prefix web run dev:emulator` |
+| Demo sin servidor | `npm --prefix web run build:demo && npx --prefix web vite preview --outDir dist-e2e` |
+| Suites Playwright | `audit/README.md` |
 
 ## Pendientes
 
-- Fase 2: estructura React + TypeScript y núcleo de dominio tipado.
-- Fase 3: Firebase (Auth, Firestore, Hosting, reglas, emuladores).
+- La Fase 5 completa (pasos manuales en Firebase Console y despliegue), con tu autorización.
+- Una prueba en teléfonos reales con Luis y un vendedor.

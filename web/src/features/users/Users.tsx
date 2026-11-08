@@ -72,7 +72,7 @@ async function reset(blank: boolean): Promise<void> {
   } catch (e) { toast(e instanceof Error ? e.message : String(e)); }
 }
 
-function openEditUser(id: string): void { openModal(() => <EditUser id={id} />); }
+export function openEditUser(id: string): void { openModal(() => <EditUser id={id} />); }
 function EditUser({ id }: { id: string }) {
   const u = id ? ctx.S.users.find((x) => x.id === id) : null, self = !!id && id === me()?.id;
   const [f, setF] = useState<UserInput>({ nombre: u?.nombre || '', usuario: u?.usuario || '', rol: u?.rol || 'vendedor', turno: u?.turno || 'mañana', clave: '', activo: u ? u.activo : true });

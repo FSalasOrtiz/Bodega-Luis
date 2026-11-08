@@ -18,3 +18,14 @@ Suite completa (cada caso usa un navegador limpio y solo datos de demostración)
 Otros scripts: `recon.py` (recorrido por rol), `xss.py` (XSS almacenado) y `evidencias.py` (capturas de hallazgos).
 
 Salidas: `resultados-fase1.json`, `consola-fase1.json` y `capturas/`.
+
+## Fase 4 (app React)
+
+```bash
+npm --prefix web run build:demo
+python .agents/skills/webapp-testing/scripts/with_server.py --server "cd web && npx vite preview --outDir dist-e2e --port 4173 --strictPort" --port 4173 -- python audit/playwright/audit_suite_react.py
+# modo Firebase (con `npm run emulators` corriendo):
+npm --prefix web run build:emulator && npm --prefix web run reset:emulator
+python .agents/skills/webapp-testing/scripts/with_server.py --server "cd web && npx vite preview --outDir dist-emulator --port 4174 --strictPort" --port 4174 -- python audit/playwright/firebase_smoke.py
+```
+Resultados: `resultados-fase4.json`, `resultados-firebase.json`.

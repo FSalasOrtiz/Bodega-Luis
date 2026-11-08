@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useRef, useSyncExternalStore, type ReactNode } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore, type ReactNode } from 'react';
 import { useApp } from '../state/store';
 
 /*
@@ -39,6 +39,9 @@ export function ModalHost() {
   useApp(); // vuelve a dibujar el contenido cuando cambian los datos
   const ref = useRef<HTMLDivElement>(null);
   const spec = current;
+  // la clase is-open la controla React (si la pusiéramos a mano, un cambio de ancho del diálogo la borraría)
+  const [openKey, setOpenKey] = useState(0);
+  const [instant, setInstant] = useState(false);
 
   useEffect(() => {
     const root = document.getElementById('root');
@@ -57,13 +60,13 @@ export function ModalHost() {
   // al abrir: foco en el diálogo (o en el campo con autoFocus); el teclado del móvil no se abre solo
   useLayoutEffect(() => {
     const d = ref.current;
-    if (!d) return;
-    if (keyboard) d.classList.add('instant-motion');
-    void d.offsetWidth;
-    d.classList.add('is-open');
+    if (!d || !spec) return;
+    setInstant(keyboard);
+    void d.offsetWidth; // estado inicial antes de la transición
+    setOpenKey(spec.key);
     const auto = d.querySelector<HTMLElement>('[autofocus]:not(:disabled)');
     (auto || d).focus({ preventScroll: true });
-  }, [spec?.key]);
+  }, [spec?.key]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // título accesible
   useLayoutEffect(() => {
@@ -86,7 +89,7 @@ export function ModalHost() {
   };
   return (
     <div className="ov" onClick={(e) => { if (e.target === e.currentTarget) closeModal(); }}>
-      <div ref={ref} key={spec.key} className={`modal t-modal ${spec.wide ? 'wide' : ''} ${spec.variant === 'invoice' ? 'invoice-preview' : ''}`} role="dialog" aria-modal="true" tabIndex={-1} onKeyDown={onKey}>
+      <div ref={ref} key={spec.key} className={`modal t-modal ${spec.wide ? 'wide' : ''} ${spec.variant === 'invoice' ? 'invoice-preview' : ''} ${openKey === spec.key ? 'is-open' : ''} ${instant ? 'instant-motion' : ''}`} role="dialog" aria-modal="true" tabIndex={-1} onKeyDown={onKey}>
         {spec.render()}
       </div>
     </div>

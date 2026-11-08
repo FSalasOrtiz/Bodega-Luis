@@ -7,7 +7,7 @@
  {
   "id": "FB-02",
   "estado": "APROBADA",
-  "detalle": "ventas cargadas 975"
+  "detalle": "ventas cargadas 978"
  },
  {
   "id": "FB-03",
@@ -17,12 +17,12 @@
  {
   "id": "FB-04",
   "estado": "APROBADA",
-  "detalle": "N° 1976 (esperado 1976) stock 81->79"
+  "detalle": "N° 1979 (esperado 1979) stock 46->44"
  },
  {
   "id": "FB-05",
   "estado": "APROBADA",
-  "detalle": "venta presente=True, stock tras recargar 79 (antes 79)"
+  "detalle": "venta presente=True, stock tras recargar 44 (antes 44)"
  },
  {
   "id": "FB-06",

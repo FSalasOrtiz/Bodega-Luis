@@ -1,0 +1,879 @@
+[
+ {
+  "id": "AUTH-01",
+  "modulo": "Acceso",
+  "caso": "Login correcto de los 4 roles abre su módulo inicial",
+  "tipo": "positivo",
+  "estado": "APROBADA",
+  "detalle": {
+   "luis": "dash",
+   "gonzalo": "pos",
+   "samuel": "pos",
+   "genesis": "sales"
+  },
+  "seg": 5.0
+ },
+ {
+  "id": "AUTH-02",
+  "modulo": "Acceso",
+  "caso": "Contraseña incorrecta muestra error claro",
+  "tipo": "negativo",
+  "estado": "APROBADA",
+  "detalle": "Usuario o contraseña incorrectos",
+  "seg": 1.2
+ },
+ {
+  "id": "AUTH-03",
+  "modulo": "Acceso",
+  "caso": "Usuario inexistente / vacío / mayúsculas y espacios",
+  "tipo": "negativo",
+  "estado": "APROBADA",
+  "detalle": "inexistente rechazado; \"  LUIS  \" normalizado a luis",
+  "seg": 1.5
+ },
+ {
+  "id": "AUTH-04",
+  "modulo": "Acceso",
+  "caso": "La sesión y el módulo se mantienen al recargar",
+  "tipo": "positivo",
+  "estado": "APROBADA",
+  "detalle": [
+   "luis",
+   "inv"
+  ],
+  "seg": 1.9
+ },
+ {
+  "id": "AUTH-05",
+  "modulo": "Acceso",
+  "caso": "Cerrar sesión borra la sesión aunque se recargue",
+  "tipo": "positivo",
+  "estado": "APROBADA",
+  "detalle": "login visible tras recarga",
+  "seg": 1.7
+ },
+ {
+  "id": "AUTH-06",
+  "modulo": "Acceso",
+  "caso": "Usuario desactivado no puede entrar y su sesión abierta se corta",
+  "tipo": "negativo",
+  "estado": "APROBADA",
+  "detalle": "rechazado tras desactivar",
+  "seg": 2.0
+ },
+ {
+  "id": "AUTH-07",
+  "modulo": "Permisos",
+  "caso": "Vendedor no accede a módulos de administrador desde la UI",
+  "tipo": "negativo",
+  "estado": "APROBADA",
+  "detalle": {
+   "menu": [
+    "pos",
+    "rec",
+    "inv",
+    "sales",
+    "caja",
+    "credits"
+   ],
+   "intentos": {
+    "dash": "pos",
+    "prod": "pos",
+    "bal": "pos",
+    "users": "pos"
+   }
+  },
+  "seg": 2.2
+ },
+ {
+  "id": "AUTH-08",
+  "modulo": "Permisos",
+  "caso": "Contadora: solo Historial y sin escrituras",
+  "tipo": "negativo",
+  "estado": "APROBADA",
+  "detalle": {
+   "menu": [
+    "sales"
+   ],
+   "escritura": "Tu perfil es de solo lectura."
+  },
+  "seg": 1.5
+ },
+ {
+  "id": "AUTH-09",
+  "modulo": "Seguridad",
+  "caso": "Claves no legibles en el navegador y sin credenciales en el login",
+  "tipo": "seguridad",
+  "estado": "APROBADA",
+  "detalle": "login sin credenciales. En modo Firebase la clave no existe en los datos (FB-03) y vive solo en Firebase Auth.",
+  "seg": 1.0
+ },
+ {
+  "id": "AUTH-10",
+  "modulo": "Seguridad",
+  "caso": "Un vendedor no puede elevar sus privilegios",
+  "tipo": "seguridad",
+  "estado": "APROBADA",
+  "detalle": "el estado es inmutable (rol tras intento: vendedor); en producción las reglas de Firestore lo impiden (tests de reglas 20/20).",
+  "seg": 1.2
+ },
+ {
+  "id": "AUTH-11",
+  "modulo": "Acceso",
+  "caso": "Cambiar contraseña: validaciones y límite de 2 por día del vendedor",
+  "tipo": "negativo",
+  "estado": "APROBADA",
+  "detalle": {
+   "clave_actual_mala": "La contraseña actual no es correcta.",
+   "formato": "La nueva contraseña debe tener exactamente 6 números.",
+   "no_coinciden": "Las contraseñas nuevas no coinciden.",
+   "igual": "La nueva contraseña debe ser distinta de la actual.",
+   "ok1": "OK",
+   "ok2": "OK",
+   "tercera": "FORM_BLOQUEADO:Ya cambiaste tu contraseña 2 veces hoy. Inténtalo mañana."
+  },
+  "seg": 5.6
+ },
+ {
+  "id": "AUTH-12",
+  "modulo": "Usuarios",
+  "caso": "El administrador no puede quitarse su propio rol (bloqueo total)",
+  "tipo": "negativo",
+  "estado": "APROBADA",
+  "detalle": {
+   "selector_rol_propio_deshabilitado": true,
+   "admins_activos": 1
+  },
+  "seg": 2.1
+ },
+ {
+  "id": "POS-01",
+  "modulo": "Punto de venta",
+  "caso": "Venta por gamela en efectivo: total, stock, comprobante y persistencia",
+  "tipo": "positivo",
+  "estado": "APROBADA",
+  "detalle": {
+   "total": 42000,
+   "total_ui": "Total $42.000",
+   "stock": "60->58",
+   "vendedor": "u2"
+  },
+  "seg": 3.3
+ },
+ {
+  "id": "POS-02",
+  "modulo": "Punto de venta",
+  "caso": "No permite vender más stock del disponible",
+  "tipo": "negativo",
+  "estado": "APROBADA",
+  "detalle": "No alcanza: quedan 89 gam.",
+  "seg": 1.8
+ },
+ {
+  "id": "POS-03",
+  "modulo": "Punto de venta",
+  "caso": "Cantidades inválidas: 0, negativo, texto, decimal en gamela",
+  "tipo": "negativo",
+  "estado": "APROBADA",
+  "detalle": {
+   "0": {
+    "ok_disabled": true,
+    "err": "Venta mínima: 1 gamela",
+    "sub": "$0"
+   },
+   "-3": {
+    "ok_disabled": true,
+    "err": "Venta mínima: 1 gamela",
+    "sub": "$0"
+   },
+   "abc": {
+    "ok_disabled": true,
+    "err": "Venta mínima: 1 gamela",
+    "sub": "$0"
+   },
+   "2,5": {
+    "ok_disabled": true,
+    "err": "Las gamelas deben ser un número entero.",
+    "sub": "$50.000"
+   }
+  },
+  "seg": 4.1
+ },
+ {
+  "id": "POS-04",
+  "modulo": "Punto de venta",
+  "caso": "Venta por kg con coma decimal (palta)",
+  "tipo": "positivo",
+  "estado": "APROBADA",
+  "detalle": {
+   "stock_compra_directa_kg": 385.61,
+   "ok_disabled": false,
+   "err": "",
+   "sub": "$5.500"
+  },
+  "seg": 2.3
+ },
+ {
+  "id": "POS-05",
+  "modulo": "Punto de venta",
+  "caso": "Búsqueda por SKU y filtro por familia",
+  "tipo": "positivo",
+  "estado": "APROBADA",
+  "detalle": {
+   "busqueda": [
+    "PAL-GRA"
+   ],
+   "familia": [
+    "PAL-I",
+    "PAL-II",
+    "PAL-III",
+    "PAL-DES",
+    "PAL-GRA"
+   ]
+  },
+  "seg": 2.0
+ },
+ {
+  "id": "POS-06",
+  "modulo": "Punto de venta",
+  "caso": "Registrar sin confirmar el pago no registra la venta",
+  "tipo": "negativo",
+  "estado": "APROBADA",
+  "detalle": "Debes confirmar que recibiste el pago.",
+  "seg": 2.7
+ },
+ {
+  "id": "POS-07",
+  "modulo": "Punto de venta",
+  "caso": "Doble clic en \"Registrar venta\" crea una sola venta",
+  "tipo": "extremo",
+  "estado": "APROBADA",
+  "detalle": "957->958 (reintento con misma clave no duplica)",
+  "seg": 2.9
+ },
+ {
+  "id": "POS-08",
+  "modulo": "Punto de venta",
+  "caso": "Factura exige datos del receptor y valida RUT",
+  "tipo": "negativo",
+  "estado": "APROBADA",
+  "detalle": {
+   "sin_datos": "Ingresa un RUT válido del cliente para la factura, con guion y dígito verificador.",
+   "rut_invalido": "Ingresa un RUT válido del cliente para la factura, con guion y dígito verificador.",
+   "rut_valido": "factura"
+  },
+  "seg": 3.7
+ },
+ {
+  "id": "POS-09",
+  "modulo": "Punto de venta",
+  "caso": "Pago mixto efectivo + transferencia suma el total",
+  "tipo": "positivo",
+  "estado": "APROBADA",
+  "detalle": {
+   "pagos": {
+    "efectivo": 5000,
+    "transferencia": 12000
+   },
+   "total": 17000
+  },
+  "seg": 3.1
+ },
+ {
+  "id": "POS-10",
+  "modulo": "Punto de venta",
+  "caso": "Crédito de vendedor requiere autorización de Luis",
+  "tipo": "negativo",
+  "estado": "APROBADA",
+  "detalle": {
+   "opened": false,
+   "disabled": true,
+   "toast": "botón \"Revisar venta\" deshabilitado",
+   "hint": "ahora?\nTotal de la venta $17.000 · queda a crédito $17.000 (todo a crédito)\nNombre del cliente\nCliente nuevo: se agrega al módulo de créditos.\n\nPedir autorización a Luis\n\nTotal\n$17.000\nPaga ahora\n$0\nQueda a crédito\n$17.000\n\nPara registrar la venta, Luis tiene que autorizar el crédito.\n\nRevisar venta"
+  },
+  "seg": 2.0
+ },
+ {
+  "id": "POS-11",
+  "modulo": "Punto de venta",
+  "caso": "El carrito se conserva al recargar la página",
+  "tipo": "positivo",
+  "estado": "APROBADA",
+  "detalle": [
+   {
+    "prod": "prmxhycw",
+    "qty": 3,
+    "src": "consig"
+   }
+  ],
+  "seg": 2.4
+ },
+ {
+  "id": "POS-12",
+  "modulo": "Punto de venta",
+  "caso": "Gamelas: el cliente trae más de las que lleva → descuento menor que la compra",
+  "tipo": "extremo",
+  "estado": "APROBADA",
+  "detalle": {
+   "total_1xTOM-C9_trae3": 18000,
+   "trae_50_con_compra_6000": "botón \"Revisar venta\" deshabilitado"
+  },
+  "seg": 3.9
+ },
+ {
+  "id": "POS-13",
+  "modulo": "Punto de venta",
+  "caso": "Vender gamelas vacías solas",
+  "tipo": "positivo",
+  "estado": "APROBADA",
+  "detalle": 2000,
+  "seg": 2.1
+ },
+ {
+  "id": "POS-14",
+  "modulo": "Punto de venta",
+  "caso": "Solicitud de otro precio: vendedor pide y Luis ve el aviso (entre módulos)",
+  "tipo": "positivo",
+  "estado": "APROBADA",
+  "detalle": {
+   "solicitud": {
+    "estado": "pendiente",
+    "precio": 17000
+   }
+  },
+  "seg": 2.7
+ },
+ {
+  "id": "REC-01",
+  "modulo": "Recepción",
+  "caso": "Recepción en consignación suma stock, crea lote y queda en historial",
+  "tipo": "positivo",
+  "estado": "APROBADA",
+  "detalle": {
+   "producto": "TOM-C9",
+   "stock": "49->59",
+   "toast": "Recepción guardada · stock disponible",
+   "comprobante_abierto": true
+  },
+  "seg": 2.9
+ },
+ {
+  "id": "REC-02",
+  "modulo": "Recepción",
+  "caso": "Sin cantidades / cantidad negativa / texto",
+  "tipo": "negativo",
+  "estado": "APROBADA",
+  "detalle": {
+   "vacío": "Ingresa al menos una cantidad.",
+   "-5": "Ingresa al menos una cantidad.",
+   "abc": "Ingresa al menos una cantidad."
+  },
+  "seg": 3.7
+ },
+ {
+  "id": "REC-03",
+  "modulo": "Recepción",
+  "caso": "Recepción gamela con decimal (2,5 gamelas) se redondea o se rechaza",
+  "tipo": "extremo",
+  "estado": "APROBADA",
+  "detalle": {
+   "stock": "62->62",
+   "toast": "Las gamelas deben ser números enteros (sin decimales)."
+  },
+  "seg": 2.2
+ },
+ {
+  "id": "REC-04",
+  "modulo": "Recepción",
+  "caso": "Compra directa con costo queda en stock de compra directa",
+  "tipo": "positivo",
+  "estado": "APROBADA",
+  "detalle": {
+   "producto": "TOM-C9",
+   "stock_directa": "0->7",
+   "costo_lote": 9000
+  },
+  "seg": 2.6
+ },
+ {
+  "id": "REC-05",
+  "modulo": "Recepción",
+  "caso": "Anular recepción (admin) con motivo devuelve stock; vendedor no ve \"Anular\"",
+  "tipo": "positivo",
+  "estado": "APROBADA",
+  "detalle": {
+   "stock": "46->41",
+   "sin_motivo": "Escribe el motivo"
+  },
+  "seg": 4.2
+ },
+ {
+  "id": "REC-06",
+  "modulo": "Recepción",
+  "caso": "No permite anular una recepción ya vendida en parte",
+  "tipo": "negativo",
+  "estado": "APROBADA",
+  "detalle": "No se puede anular: parte del lote ya se vendió. Ajusta el stock en su lugar.",
+  "seg": 1.9
+ },
+ {
+  "id": "MER-01",
+  "modulo": "Merma",
+  "caso": "Merma dentro del stock descuenta FIFO y registra movimiento",
+  "tipo": "positivo",
+  "estado": "APROBADA",
+  "detalle": {
+   "producto": "TOM-C9",
+   "stock": "68->66",
+   "toast": "Merma registrada.",
+   "motivo_guardado": "Merma registrada"
+  },
+  "seg": 2.4
+ },
+ {
+  "id": "MER-02",
+  "modulo": "Merma",
+  "caso": "Merma mayor al stock / decimal en gamela / cero",
+  "tipo": "negativo",
+  "estado": "APROBADA",
+  "detalle": {
+   "84": "botón deshabilitado",
+   "0": "botón deshabilitado",
+   "1,5": "Ingresa una cantidad válida dentro del stock disponible."
+  },
+  "seg": 2.7
+ },
+ {
+  "id": "INV-01",
+  "modulo": "Inventario",
+  "caso": "Crear producto: validaciones (SKU duplicado, sin precio, sin familia) y alta correcta",
+  "tipo": "negativo",
+  "estado": "APROBADA",
+  "detalle": {
+   "dup": "Ese SKU ya existe",
+   "sin_precio": "Ingresa el precio",
+   "sin_familia": "Selecciona una familia identificada.",
+   "precio_neg": "Precio inválido",
+   "ok": "Producto guardado"
+  },
+  "seg": 5.6
+ },
+ {
+  "id": "INV-02",
+  "modulo": "Inventario",
+  "caso": "Cambio de precio: queda en historial, POS lo usa y ventas anteriores conservan su precio",
+  "tipo": "positivo",
+  "estado": "APROBADA",
+  "detalle": {
+   "nuevo": 21000,
+   "venta_antigua_conserva": 18000,
+   "pos": "TOM-C8 Tomate calibre 8 Quedan 30 gam. $21.000 /gamela"
+  },
+  "seg": 2.1
+ },
+ {
+  "id": "INV-03",
+  "modulo": "Inventario",
+  "caso": "Precio inválido (0, vacío, decimal, enorme)",
+  "tipo": "negativo",
+  "estado": "APROBADA",
+  "detalle": {
+   "0": [
+    "Precio inválido",
+    18000
+   ],
+   "vacío": [
+    "Precio inválido",
+    18000
+   ],
+   "15000.7": [
+    "El precio va en pesos enteros, sin decimales.",
+    18000
+   ],
+   "999999999999": [
+    "El precio no puede superar $10.000.000.",
+    18000
+   ]
+  },
+  "seg": 4.1
+ },
+ {
+  "id": "INV-04",
+  "modulo": "Inventario",
+  "caso": "Ajuste de stock: exige motivo, no deja lote negativo, registra movimiento",
+  "tipo": "negativo",
+  "estado": "APROBADA",
+  "detalle": {
+   "sin_motivo": "Cantidad y motivo son obligatorios",
+   "negativo": "El lote quedaría negativo",
+   "ok": "Ajuste registrado",
+   "decimal_gamela": "Las gamelas se ajustan en números enteros.",
+   "stock": "63->66",
+   "ultimo_mov_qty": 3,
+   "ultimo_mov_motivo": "Conteo físico"
+  },
+  "seg": 4.3
+ },
+ {
+  "id": "INV-05",
+  "modulo": "Inventario",
+  "caso": "Ajustar stock de un producto nuevo sin lotes",
+  "tipo": "extremo",
+  "estado": "APROBADA",
+  "detalle": {
+   "toast": "QA sin lotes todavía no tiene lotes: el stock entra con una recepción.",
+   "stock": 0
+  },
+  "seg": 1.7
+ },
+ {
+  "id": "INV-06",
+  "modulo": "Inventario",
+  "caso": "Búsqueda y filtro de inventario; vista de vendedor sin datos de admin",
+  "tipo": "positivo",
+  "estado": "APROBADA",
+  "detalle": {
+   "filas_busqueda_pera": 1,
+   "cabecera_admin": "SKU\tProducto\tFamilia\tUnidad\tPrecio\tConsignación\tCompra directa\tStock total\tLlegó hoy\tVendido hoy\t | ",
+   "cabecera_vendedor": "Producto\tPrecio\tConsignación\tCompra directa\tStock total | "
+  },
+  "seg": 2.4
+ },
+ {
+  "id": "HIS-01",
+  "modulo": "Historial",
+  "caso": "Anular venta (admin): exige motivo, devuelve stock si se indica, deja compensación",
+  "tipo": "positivo",
+  "estado": "APROBADA",
+  "detalle": {
+   "sin_motivo": "El motivo es obligatorio.",
+   "toast": "Venta anulada.",
+   "stock": "63->65",
+   "estado": "completada"
+  },
+  "seg": 4.7
+ },
+ {
+  "id": "HIS-01b",
+  "modulo": "Historial",
+  "caso": "Anular una venta histórica (datos previos) informa su estado real",
+  "tipo": "negativo",
+  "estado": "APROBADA",
+  "detalle": {
+   "toast": "Anulación registrada, pero queda pendiente: el documento de esta venta debe verificarse antes de completarla. El stock y el dinero aún no se devuelven.",
+   "estado": "pendiente_verificacion"
+  },
+  "seg": 2.0
+ },
+ {
+  "id": "HIS-02",
+  "modulo": "Historial",
+  "caso": "Vendedor solicita anulación y Luis recibe el aviso",
+  "tipo": "positivo",
+  "estado": "APROBADA",
+  "detalle": {
+   "solicitud": true,
+   "aviso_admin": true
+  },
+  "seg": 2.2
+ },
+ {
+  "id": "HIS-03",
+  "modulo": "Historial",
+  "caso": "Vendedor solo ve sus ventas; filtros de medio y fechas coinciden con los datos",
+  "tipo": "positivo",
+  "estado": "APROBADA",
+  "detalle": {
+   "vendedor_solo_propias": true,
+   "filtro_transferencia": 396
+  },
+  "seg": 2.1
+ },
+ {
+  "id": "HIS-04",
+  "modulo": "Historial",
+  "caso": "Descargar reporte (contadora): periodo invertido no descarga; válido descarga CSV",
+  "tipo": "positivo",
+  "estado": "APROBADA",
+  "detalle": {
+   "invertido": "La fecha \"desde\" no puede ser posterior a \"hasta\".",
+   "boton_deshabilitado": true,
+   "conteo": "966 ventas en el periodo.",
+   "csv_cabecera": "\"N°\";\"Documento\";\"Fecha\";\"Vendedor\";\"RUT cliente\";\"Razón social\";\"Giro\";\"Dirección\";\"Comuna\";\"Detalle\";\"Medio de pago\";\"Neto\";\"IVA\";\"Total\";\"Estado\"",
+   "csv_lineas": 967
+  },
+  "seg": 1.9
+ },
+ {
+  "id": "HIS-05",
+  "modulo": "Historial",
+  "caso": "Paginación del historial (20 por página)",
+  "tipo": "positivo",
+  "estado": "APROBADA",
+  "detalle": {
+   "filas_p1": 20,
+   "filas_p2": 20
+  },
+  "seg": 1.7
+ },
+ {
+  "id": "CAJA-01",
+  "modulo": "Cierre de caja",
+  "caso": "Vendedor declara y cierra turno; Luis lo aprueba desde el aviso",
+  "tipo": "positivo",
+  "estado": "APROBADA",
+  "detalle": {
+   "esperado": "$23.965.321",
+   "vacío": "Ingresa un efectivo contado válido.",
+   "negativo": "Ingresa un efectivo contado válido.",
+   "ok": "Turno cerrado. Luis lo verá para aprobarlo.",
+   "diferencia": -23865321,
+   "aviso_dash": true,
+   "aprobado_por": "u1"
+  },
+  "seg": 3.0
+ },
+ {
+  "id": "CAJA-02",
+  "modulo": "Cierre de caja",
+  "caso": "Segundo cierre sin movimientos nuevos se rechaza",
+  "tipo": "negativo",
+  "estado": "APROBADA",
+  "detalle": {
+   "boton_deshabilitado": true,
+   "mensaje": "closeShift is not defined"
+  },
+  "seg": 2.1
+ },
+ {
+  "id": "CRE-01",
+  "modulo": "Créditos",
+  "caso": "Venta a crédito de Luis, abono parcial y pago total",
+  "tipo": "positivo",
+  "estado": "APROBADA",
+  "detalle": {
+   "deuda": 17000,
+   "tras_abono": 12000,
+   "final": 0,
+   "toast_final": "Deuda de Cliente QA saldada."
+  },
+  "seg": 5.5
+ },
+ {
+  "id": "CRE-02",
+  "modulo": "Créditos",
+  "caso": "Abono mayor que la deuda y borrar cliente con deuda se rechazan",
+  "tipo": "negativo",
+  "estado": "APROBADA",
+  "detalle": {
+   "abono_mayor": "El abono supera la deuda ($168.000).",
+   "borrar_con_deuda": "Sergio debe $168.000. Primero tiene que pagar su deuda."
+  },
+  "seg": 2.4
+ },
+ {
+  "id": "PRD-01",
+  "modulo": "Productores",
+  "caso": "Crear productor (validación de nombre) y generar liquidación",
+  "tipo": "positivo",
+  "estado": "APROBADA",
+  "detalle": {
+   "sin_nombre": "Falta el nombre",
+   "liquidacion": {
+    "neto": 47111850,
+    "comision": 5234650,
+    "monto": 52346500
+   },
+   "liquidaciones_mismo_periodo_tras_2_clics": 1
+  },
+  "seg": 4.3
+ },
+ {
+  "id": "BAL-01",
+  "modulo": "Balance",
+  "caso": "Agregar gasto (validación de monto) y exportar CSV",
+  "tipo": "positivo",
+  "estado": "APROBADA",
+  "detalle": {
+   "sin_monto": "Ingresa el monto",
+   "ok": "Gasto registrado",
+   "export": "ventas-2026-11-07.csv"
+  },
+  "seg": 2.8
+ },
+ {
+  "id": "BAL-02",
+  "modulo": "Balance",
+  "caso": "Montos negativos con formato -$",
+  "tipo": "positivo",
+  "estado": "APROBADA",
+  "detalle": [
+   "-$1.403.595",
+   "$2.500",
+   "$0"
+  ],
+  "seg": 1.2
+ },
+ {
+  "id": "USR-03",
+  "modulo": "Usuarios",
+  "caso": "Desactivar al último administrador se rechaza",
+  "tipo": "negativo",
+  "estado": "APROBADA",
+  "detalle": {
+   "desactiva_admin_secundario": true,
+   "rol_propio_bloqueado": true
+  },
+  "seg": 3.9
+ },
+ {
+  "id": "USR-01",
+  "modulo": "Usuarios",
+  "caso": "Crear usuario: duplicado, clave inválida y alta; el nuevo usuario entra",
+  "tipo": "negativo",
+  "estado": "APROBADA",
+  "detalle": {
+   "dup": "Ese usuario ya existe",
+   "clave": "La contraseña debe tener exactamente 6 números",
+   "ok": "Usuario guardado",
+   "login_nuevo": "ana"
+  },
+  "seg": 3.6
+ },
+ {
+  "id": "USR-02",
+  "modulo": "Usuarios",
+  "caso": "Guardar ajustes de empresa y reiniciar datos en blanco",
+  "tipo": "positivo",
+  "estado": "APROBADA",
+  "detalle": {
+   "toast": "Ajustes guardados",
+   "tras_reinicio": {
+    "ventas": 0,
+    "productos": 18,
+    "usuarios": 4,
+    "sesion": true
+   }
+  },
+  "seg": 2.2
+ },
+ {
+  "id": "STO-01",
+  "modulo": "Persistencia",
+  "caso": "Tamaño de datos en localStorage vs. límite (~5 MB)",
+  "tipo": "riesgo",
+  "estado": "APROBADA",
+  "detalle": {
+   "bytes_60_dias_demo": 1381022,
+   "ventas": 974,
+   "movimientos": 2213,
+   "bytes_por_venta_aprox": 1418,
+   "ventas_hasta_5MB_aprox": 3526
+  },
+  "seg": 1.2
+ },
+ {
+  "id": "STO-02",
+  "modulo": "Persistencia",
+  "caso": "Si localStorage falla, el usuario recibe aviso y no pierde datos en silencio",
+  "tipo": "negativo",
+  "estado": "APROBADA",
+  "detalle": {
+   "precio": "No se pudo guardar el cambio en este equipo: no quedó registrado. Revisa el espacio disponible e inténtalo de nuevo. QuotaExceededError",
+   "venta": "No se pudo guardar el cambio en este equipo: no quedó registrado. Revisa el espacio disponible e inténtalo de nuevo. QuotaExceededError"
+  },
+  "seg": 4.2
+ },
+ {
+  "id": "STO-03",
+  "modulo": "Persistencia",
+  "caso": "Dos pestañas: una venta en A y un cambio de precio en B no se pisan",
+  "tipo": "concurrencia",
+  "estado": "APROBADA",
+  "detalle": {
+   "ventas": "993->994",
+   "precio_B": 24680
+  },
+  "seg": 4.1
+ },
+ {
+  "id": "STO-04",
+  "modulo": "Persistencia",
+  "caso": "Escritura con copia antigua (otro dispositivo) no borra datos nuevos",
+  "tipo": "concurrencia",
+  "estado": "APROBADA",
+  "detalle": "Aplica al modo Firebase: control de versión _v en cada transacción y regla de reglas \"una actualización que no sube la versión se rechaza\" (tests de reglas 20/20); FB-06/FB-07 en emulador.",
+  "seg": 0.0
+ },
+ {
+  "id": "RESP-01",
+  "modulo": "Responsive",
+  "caso": "Sin scroll horizontal en móvil (390), tablet (768) y escritorio (1440); barra inferior en móvil",
+  "tipo": "positivo",
+  "estado": "APROBADA",
+  "detalle": {
+   "capturas": [
+    "audit/capturas/resp-390-luis-dash.png",
+    "audit/capturas/resp-390-luis-pos.png",
+    "audit/capturas/resp-390-luis-rec.png",
+    "audit/capturas/resp-390-luis-sales.png",
+    "audit/capturas/resp-390-luis-bal.png",
+    "audit/capturas/resp-768-luis-pos.png",
+    "audit/capturas/resp-768-luis-inv.png",
+    "audit/capturas/resp-768-gonzalo-pos.png",
+    "audit/capturas/resp-768-gonzalo-inv.png"
+   ]
+  },
+  "seg": 30.7
+ },
+ {
+  "id": "RESP-02",
+  "modulo": "Responsive",
+  "caso": "Flujo de venta completo en móvil 390px (toques)",
+  "tipo": "positivo",
+  "estado": "APROBADA",
+  "detalle": {
+   "ventas": "954->955",
+   "captura": "audit/capturas/resp-390-venta-comprobante.png"
+  },
+  "seg": 5.3
+ },
+ {
+  "id": "A11Y-01",
+  "modulo": "Accesibilidad",
+  "caso": "Login: campos con etiqueta asociada; navegación por teclado en el menú",
+  "tipo": "accesibilidad",
+  "estado": "APROBADA",
+  "detalle": {
+   "nav": [
+    [
+     0,
+     "button"
+    ],
+    [
+     0,
+     "button"
+    ],
+    [
+     0,
+     "button"
+    ]
+   ],
+   "enter_abre": "inv"
+  },
+  "seg": 1.4
+ },
+ {
+  "id": "NET-01",
+  "modulo": "Dependencias",
+  "caso": "La app funciona si fallan los CDN externos (GSAP, Google Fonts)",
+  "tipo": "resiliencia",
+  "estado": "APROBADA",
+  "detalle": {
+   "login_y_dashboard": true,
+   "pos": "Punto de venta",
+   "errores_js": []
+  },
+  "seg": 1.7
+ }
+]

@@ -152,7 +152,7 @@ function EditClient({ id }: { id: string }) {
 }
 
 /** Borrar cliente: solo si no debe nada. Se oculta para que las ventas antiguas sigan mostrando su nombre. */
-function deleteClient(id: string): void {
+export function deleteClient(id: string): void {
   if (!isAdmin()) { toast('Solo Luis puede borrar clientes.'); return; }
   const c = CL(id), saldo = creditBalance(id);
   if (saldo > 0) { toast(`${c.nombre} debe ${clp(saldo)}. Primero tiene que pagar su deuda.`); return; }

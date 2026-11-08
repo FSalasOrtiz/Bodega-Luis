@@ -18,7 +18,10 @@ import { salesRows } from '../features/sales/Sales';
 
 declare global { interface Window { __test?: unknown } }
 
+import { installCompat } from './testCompat';
+
 export function installTestBridge(): void {
+  installCompat();
   window.__test = {
     get S() { return ctx.S; },
     get me() { return me(); },
