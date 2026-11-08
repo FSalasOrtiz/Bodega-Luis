@@ -34,7 +34,7 @@ function mulberry32(seed: number) {
 
 type Ctx = vm.Context & { S: State; [k: string]: unknown };
 let proto: Ctx;
-let clockNow = T0;
+const clockNow = T0;
 
 function loadPrototype(): Ctx {
   const html = readFileSync(resolve(ROOT, 'bodega-lo-valledor.html'), 'utf8');

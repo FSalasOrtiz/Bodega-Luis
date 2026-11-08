@@ -23,7 +23,7 @@ export class LocalDataStore implements DataStore {
     try {
       localStorage.setItem(this.key, JSON.stringify(s));
     } catch (e) {
-      throw new Error('No se pudo guardar el cambio en este equipo: no quedó registrado. Revisa el espacio disponible e inténtalo de nuevo. ' + (e instanceof Error ? e.message : ''));
+      throw new Error('No se pudo guardar el cambio en este equipo: no quedó registrado. Revisa el espacio disponible e inténtalo de nuevo. ' + (e instanceof Error ? e.message : ''), { cause: e });
     }
   }
   subscribe(onRemote: (s: State) => void): () => void {
