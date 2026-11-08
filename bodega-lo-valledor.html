@@ -298,6 +298,7 @@ body{background:
   .printable{position:absolute;inset:0;padding:20px}
   .noprint{display:none!important}
 }
+@media (max-width:1000px){.g2.stack{grid-template-columns:minmax(0,1fr)}}
 @media (max-width:1100px){
   .g4{grid-template-columns:repeat(2,1fr)}
   .g3{grid-template-columns:1fr 1fr}
@@ -716,7 +717,11 @@ const LOGO=(w=180,{mark=false,alt='LMA Agro Comercial'}={})=>mark
 /* ---------- utilidades ---------- */
 const $=s=>document.querySelector(s);
 const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
-const clp=n=>'$'+Math.round(n||0).toLocaleString('es-CL');
+const clp=n=>{const v=Math.round(n||0);return (v<0?'-':'')+'$'+Math.abs(v).toLocaleString('es-CL')};
+// precio de venta: pesos enteros, mayor que 0 y con tope razonable
+const PRICE_MAX=10000000;
+const priceOk=v=>Number.isInteger(v)&&v>0&&v<=PRICE_MAX;
+const priceErr=raw=>raw===''||!(Number(raw)>0)?'Precio inválido':!Number.isInteger(Number(raw))?'El precio va en pesos enteros, sin decimales.':`El precio no puede superar ${clp(PRICE_MAX)}.`;
 const kg=n=>(Math.round((n||0)*100)/100).toLocaleString('es-CL',{maximumFractionDigits:2});
 const qtyFmt=(q,u)=>u==='kg'?kg(q)+' kg':Math.round(q).toLocaleString('es-CL')+' gam.';
 const pad2=n=>String(n).padStart(2,'0');
@@ -735,18 +740,20 @@ const today=()=>dayKey(now());
 // v5: catálogo real de LMA + créditos (reunión 2). Versiones anteriores quedan intactas en el navegador.
 const KEY='bodegaLV.v6';
 let S;
-function save(){if(me&&me.rol==='contador')return;try{localStorage.setItem(KEY,JSON.stringify(S))}catch(e){}}
+// Si no se puede guardar, se avisa, se descarta el cambio en memoria (vuelve a lo último guardado) y se silencian los avisos de éxito que vengan justo después.
+let saveFailedUntil=0;
+function save(){if(me&&me.rol==='contador')return true;try{localStorage.setItem(KEY,JSON.stringify(S));return true}catch(e){saveFailedUntil=Date.now()+3000;toast('No se pudo guardar el cambio en este equipo: no quedó registrado. Revisa el espacio disponible e inténtalo de nuevo.',true);try{const r=localStorage.getItem(KEY);if(r){S=JSON.parse(r);if(typeof ensureWorkflowState==='function')ensureWorkflowState()}}catch(_){}return false}}
 function load(){try{const r=localStorage.getItem(KEY);if(r){S=JSON.parse(r);const gp=S.products.find(p=>p.envase);if(gp)gp.precio=GAMELA_PRECIO;if(!S.cfg.telefonoEmisor)S.cfg.telefonoEmisor='+56956109092';S.cfg.inicioJornada=0;return}}catch(e){}seed()}
 /* blank=true: solo usuarios, ajustes y catálogo de productos; sin ventas, recepciones, productores, clientes ni gastos */
 function seed(blank=false){
   const t=now();
   S={cfg:{nombre:'LMA Agro Comercial SpA',rut:'78.402.234-K',giro:'Frutas, verduras y abarrotes',direccion:'Av. Cerrillos 4030',comuna:'Cerrillos',telefonoEmisor:'+56956109092',comision:COM_DEF,inicioJornada:0},
     users:[
-      {id:'u1',nombre:'Luis',usuario:'luis',rol:'admin',turno:'-',clave:'123456',activo:true},
+      {id:'u1',nombre:'Luis',usuario:'luis',rol:'admin',turno:'-',clave:'111111',activo:true},
       // turnos de Gonzalo y Samuel por confirmar con Luis
       {id:'u2',nombre:'Gonzalo',usuario:'gonzalo',rol:'vendedor',turno:'noche',clave:'111111',activo:true},
-      {id:'u3',nombre:'Samuel',usuario:'samuel',rol:'vendedor',turno:'mañana',clave:'222222',activo:true},
-      {id:'u4',nombre:'Génesis',usuario:'genesis',rol:'contador',turno:'-',clave:'333333',activo:true}],
+      {id:'u3',nombre:'Samuel',usuario:'samuel',rol:'vendedor',turno:'mañana',clave:'111111',activo:true},
+      {id:'u4',nombre:'Génesis',usuario:'genesis',rol:'contador',turno:'-',clave:'111111',activo:true}],
     products:[],producers:[],receptions:[],lots:[],moves:[],sales:[],closures:[],liqs:[],prices:[],audit:[],expenses:[],fixed:[],notes:[],clients:[],creditPayments:[],creditRequests:[],priceRequests:[],abonoRequests:[],comRequests:[]};
   const addP=(sku,nombre,fam,cal,unidad,precio,peso,gam,extra)=>S.products.push({id:uid('p'),sku,nombre,familia:fam,calibre:cal,unidad,precio,pesoCaja:peso||0,usaGamela:gam,activo:true,...extra});
   // tomate: se vende por gamela
@@ -1046,7 +1053,7 @@ let modalReturnFocus=null;
 let keyboardInteraction=false;
 document.addEventListener('keydown',()=>{keyboardInteraction=true},true);
 document.addEventListener('pointerdown',()=>{keyboardInteraction=false},true);
-function toast(msg){let el=$('.toast');if(!el){el=document.createElement('div');el.className='toast';el.setAttribute('role','status');el.setAttribute('aria-live','polite');document.body.appendChild(el)}el.textContent=msg;clearTimeout(toastT);toastT=setTimeout(()=>el.remove(),2600)}
+function toast(msg,force){if(!force&&Date.now()<saveFailedUntil)return;let el=$('.toast');if(!el){el=document.createElement('div');el.className='toast';el.setAttribute('role','status');el.setAttribute('aria-live','polite');document.body.appendChild(el)}el.textContent=msg;clearTimeout(toastT);toastT=setTimeout(()=>el.remove(),2600)}
 function modal(html,wide,variant){
   // Si ya hay un modal abierto, se actualiza en su lugar (sin cerrar ni volver a animar) para que no parpadee.
   const live=[...document.querySelectorAll('.ov')].find(o=>!o.inert)?.firstElementChild;
@@ -1134,7 +1141,6 @@ function viewLogin(){
     <div class="err" id="perr"></div>
     <button class="btn pri big" type="submit" style="margin-top:6px">Ingresar</button>
     <div style="display:flex;justify-content:center;margin-top:16px">${themePicker()}</div>
-    <p class="muted" style="font-size:12px;margin-top:14px">Prototipo · luis / 123456 · gonzalo / 111111 · samuel / 222222 · genesis / 333333</p>
   </form></div>`;
 }
 function doLogin(){
@@ -1439,7 +1445,7 @@ function updItem(){
   // kg: cualquier peso mayor a 0 (sin mínimo de caja); gamela: al menos 1
   const kgv=itemSt.qty;
   const over=scaleOver(p,avail,kgv);
-  const bad=kgv>avail+1e-9&&!over?`No alcanza: quedan ${qtyFmt(avail,p.unidad)}`:p.unidad==='kg'?(kgv<=0?'Ingresa los kilos que se lleva':''):kgv<1-1e-9?'Venta mínima: 1 gamela':'';
+  const bad=p.unidad!=='kg'&&!Number.isInteger(round2(kgv))?'Las gamelas deben ser un número entero.':kgv>avail+1e-9&&!over?`No alcanza: quedan ${qtyFmt(avail,p.unidad)}`:p.unidad==='kg'?(kgv<=0?'Ingresa los kilos que se lleva':''):kgv<1-1e-9?'Venta mínima: 1 gamela':'';
   $('#it_left').textContent=qtyFmt(Math.max(0,avail-kgv),p.unidad);
   $('#it_lbl').textContent=p.unidad==='gamela'?'Gamelas':'Kilos';
   $('#it_kg').textContent=p.unidad==='kg'?`${kg(kgv)} kg × ${clp(p.precio)}${over?` · el sistema tenía ${kg(Math.max(0,avail))} kg: se anotan +${kg(over)} kg de ajuste`:''}`:'';
@@ -1712,6 +1718,7 @@ async function saveRec(){
   if(!ls.length)return toast('Ingresa al menos una cantidad.');
   if(f.lineas.some(l=>l.qty!==''&&(!Number.isFinite(Number(l.qty))||Number(l.qty)<0)))return toast('Revisa las cantidades.');
   if(ls.some(l=>kgGam(P(l.prod))&&!Number.isFinite(gamInt(l.gam))))return toast('Las gamelas deben ser un número entero.');
+  if(ls.some(l=>P(l.prod)&&P(l.prod).unidad!=='kg'&&!Number.isInteger(Number(l.qty))))return toast('Las gamelas deben ser números enteros (sin decimales).');
   if(ls.some(l=>!P(l.prod)||!Number.isFinite(Number(l.costo||0))||Number(l.costo||0)<0||!(P(l.prod).unidad==='kg'?round2(+l.qty):Math.round(+l.qty))))return toast('Revisa productos, cantidades y costos.');
   receptionBusy=true;let committed=false;const t=now(),r={id:uid('r'),fecha:t,productor:f.productor,modalidad:f.modalidad,user:me.id,anulada:false,lineas:[],proveedor:{...PR(f.productor)},emisor:{...S.cfg}};
   try{
@@ -1735,6 +1742,7 @@ function recDoc(id){
   if(r.fotoId)loadReceptionImage(r.id,$('#saved-rec-photo-preview'));
 }
 function voidRec(id){
+  if(!isAdmin())return toast('Solo el administrador anula recepciones.');
   askReason('Anular recepción','Se descontará del stock lo que aún quede de estos lotes.',m=>{
     const r=S.receptions.find(x=>x.id===id);
     for(const l of r.lineas){if(lotStock(l.lot)<l.qty-1e-9){toast('No se puede anular: parte del lote ya se vendió. Ajusta el stock en su lugar.');return}}
@@ -1794,12 +1802,15 @@ function changePrice(pid){
   setTimeout(()=>$('#np')?.select(),50);
 }
 function setPrice(pid){
-  const p=P(pid),v=parseInt($('#np').value);if(p.envase){toast(`La garantía por gamela es fija: ${clp(GAMELA_PRECIO)}`);return}if(!(v>0)){toast('Precio inválido');return}
+  if(!isAdmin())return toast('Solo el administrador cambia precios.');
+  const p=P(pid),raw=String($('#np').value).trim(),v=Number(raw);if(p.envase){toast(`La garantía por gamela es fija: ${clp(GAMELA_PRECIO)}`);return}if(!priceOk(v)){toast(priceErr(raw));return}
   if(v!==p.precio){S.prices.push({prod:pid,precio:v,desde:now(),user:me.id});audit('Cambio de precio',p.nombre,clp(p.precio),clp(v));p.precio=v;flashSku=pid;save()}
   closeModal();render();toast(`Nuevo precio ${p.nombre}: ${clp(v)}`);
 }
 function adjustStock(pid){
+  if(!isAdmin())return toast('Solo el administrador ajusta stock.');
   const p=P(pid);const lots=prodLots(pid);
+  if(!lots.length)return toast(`${p.nombre} todavía no tiene lotes: el stock entra con una recepción.`);
   modal(`<h2>Ajustar stock</h2><p class="muted">${esc(p.nombre)} · stock ${qtyFmt(prodStock(pid),p.unidad)}. Usa negativo para descontar.</p>
   <div class="f"><label>Lote</label><select id="al" class="in">${lots.slice().reverse().map(l=>`<option value="${l.id}">${fdate(l.fecha)} · ${p.envase?'':SRC_LBL[lotSrc(l)]+' · '}${esc(PR(l.productor).nombre)} · ${qtyFmt(lotStock(l.id),p.unidad)}</option>`).join('')}</select></div>
   <div class="f"><label>Cantidad (+/−)</label><input id="aq" class="in num" type="number"></div>
@@ -1807,8 +1818,12 @@ function adjustStock(pid){
   <div class="acts"><button class="btn ghost" onclick="closeModal()">Cancelar</button><button class="btn pri" onclick="doAdjust('${pid}')">Registrar ajuste</button></div>`);
 }
 function doAdjust(pid){
-  const p=P(pid),lot=$('#al').value,q=parseFloat($('#aq').value),m=$('#am').value.trim();
+  if(!isAdmin())return toast('Solo el administrador ajusta stock.');
+  const p=P(pid),lot=$('#al').value,q=parseFloat(String($('#aq').value).replace(',','.')),m=$('#am').value.trim();
   if(!q||!m){toast('Cantidad y motivo son obligatorios');return}
+  if(!lot||!S.lots.some(l=>l.id===lot&&l.prod===pid)){toast('Elige un lote del producto.');return}
+  if(p.unidad!=='kg'&&!Number.isInteger(q)){toast('Las gamelas se ajustan en números enteros.');return}
+  if(p.unidad==='kg'&&round2(q)===0){toast('La cantidad es demasiado pequeña.');return}
   if(lotStock(lot)+q<0){toast('El lote quedaría negativo');return}
   S.moves.push({id:uid('m'),lot,prod:pid,tipo:'ajuste',qty:p.unidad==='kg'?round2(q):Math.round(q),user:me.id,fecha:now(),motivo:m,ref:''});save();closeModal();render();toast('Ajuste registrado');
 }
@@ -1824,11 +1839,12 @@ function editProduct(pid){
   <div class="acts">${pid?`<button class="btn ghost" onclick="adjustStock('${pid}')">Ajustar stock</button><button class="btn ghost" onclick="productSheet('${pid}')">Ver lotes</button>`:''}<button class="btn ghost" onclick="closeModal()">Cancelar</button><button class="btn pri" onclick="saveProduct('${pid||''}')">Guardar</button></div>`);
 }
 function saveProduct(pid){
+  if(!isAdmin())return toast('Solo el administrador crea o edita productos.');
   const g=id=>$('#'+id);const d={sku:g('e_sku').value.trim().toUpperCase(),nombre:g('e_nom').value.trim(),familia:g('e_fam').value,calibre:g('e_cal').value.trim()||'—',unidad:g('e_uni').value,pesoCaja:0,usaGamela:g('e_gam').checked,activo:g('e_act').checked};
   if(!d.familia||d.familia==='Otros'){toast('Selecciona una familia identificada.');return}
   if(!d.sku||!d.nombre){toast('SKU y nombre son obligatorios');return}
   if(S.products.some(x=>x.sku===d.sku&&x.id!==pid)){toast('Ese SKU ya existe');return}
-  const pr=+g('e_pre').value;if(!(pr>0)){toast('Ingresa el precio');return}
+  const prRaw=String(g('e_pre').value).trim(),pr=Number(prRaw);if(!priceOk(pr)){toast(prRaw===''?'Ingresa el precio':priceErr(prRaw));return}
   if(pid){const p=P(pid);
     if(pr!==p.precio){S.prices.push({prod:pid,precio:pr,desde:now(),user:me.id});audit('Cambio de precio',p.nombre,clp(p.precio),clp(pr));flashSku=pid}
     const ch=Object.keys(d).filter(k=>String(p[k])!==String(d[k]));
@@ -1933,7 +1949,7 @@ function voidSale(id){
     modal(`<h2>Anular venta N° ${s.num}</h2><p class="muted">La venta queda registrada como anulada, junto con sus cierres.</p><div class="f"><label for="rev-reason">Motivo obligatorio</label><textarea id="rev-reason" class="in"></textarea></div><label class="gamchk"><input id="rev-stock" type="checkbox"><span>La mercadería volvió a la bodega: devolverla al stock.</span></label><p class="muted">Si el cliente pagó, después confirma la devolución del dinero en el detalle de la venta.</p><div class="acts"><button class="btn ghost" onclick="closeModal()">Volver</button><button class="btn bad" onclick="approveSaleReversal('${id}')">Anular venta</button></div>`);
   }catch(e){toast(e.message)}
 }
-function approveSaleReversal(id){try{const s=reverseSaleCommand(id,$('#rev-reason').value,$('#rev-stock').checked);closeModal();render();toast('Venta anulada.')}catch(e){toast(e.message)}}
+function approveSaleReversal(id){try{const s=reverseSaleCommand(id,$('#rev-reason').value,$('#rev-stock').checked);closeModal();render();toast(s.reversal?.state==='completada'?'Venta anulada.':'Anulación registrada, pero queda pendiente: el documento de esta venta debe verificarse antes de completarla. El stock y el dinero aún no se devuelven.')}catch(e){toast(e.message)}}
 function requestVoid(id){
   askReason('Solicitar reversión','Se conservarán el motivo y la decisión del administrador.',reason=>{try{requestReversalCommand(id,reason);closeModal();render();toast('Solicitud registrada.')}catch(e){toast(e.message)}});
 }
@@ -2079,7 +2095,7 @@ function producerSheet(id){
   ${liqs.length?`<h4 style="margin:18px 0 6px">Liquidaciones emitidas</h4><div class="scroll"><table class="tbl"><thead><tr><th>Fecha</th><th>Periodo</th><th class="right">Neto</th><th>Estado</th><th></th></tr></thead><tbody>
    ${liqs.map(l=>`<tr><td>${fdate(l.fecha)}</td><td class="muted">${l.desde||'inicio'} a ${l.hasta||'hoy'}</td><td class="right num"><b>${clp(l.neto)}</b></td><td>${l.neto<=0?'<span class="pill warn">Ajuste a compensar</span>':l.pagada?`<span class="pill ok">Pagada ${fdate(l.pagada)} · ${l.medio}</span>`:`<button class="btn sm" onclick="payLiq('${l.id}')">Marcar pagada</button>`}</td><td><button class="btn sm ghost" onclick="liqDoc('${l.id}')">PDF</button></td></tr>`).join('')}</tbody></table></div>`:''}`;
 }
-function saveLiq(){const L=liqCalc(lf.prod,lf.desde,lf.hasta);const l={id:uid('q'),prod:lf.prod,desde:lf.desde,hasta:lf.hasta,fecha:now(),...L,pagada:0,medio:''};S.liqs.push(l);audit('Genera liquidación',PR(l.prod).nombre,'',clp(l.neto));save();render();liqDoc(l.id)}
+function saveLiq(){if(!isAdmin())return toast('Requiere administrador.');if(lf.desde&&lf.hasta&&lf.desde>lf.hasta)return toast('La fecha "desde" no puede ser posterior a "hasta".');const dup=S.liqs.find(l=>l.prod===lf.prod&&(l.desde||'')<=(lf.hasta||'9999-99-99')&&(lf.desde||'')<=(l.hasta||'9999-99-99'));if(dup)return toast(`Ya existe una liquidación de ${PR(lf.prod).nombre} que cubre parte de ese periodo (${dup.desde||'inicio'} a ${dup.hasta||'hoy'}). Elige fechas posteriores para no pagar dos veces.`);const L=liqCalc(lf.prod,lf.desde,lf.hasta);const l={id:uid('q'),prod:lf.prod,desde:lf.desde,hasta:lf.hasta,fecha:now(),...L,pagada:0,medio:''};S.liqs.push(l);audit('Genera liquidación',PR(l.prod).nombre,'',clp(l.neto));save();render();liqDoc(l.id)}
 function payLiq(id){if(!isAdmin())return toast('Requiere administrador.');if(!(S.liqs.find(l=>l.id===id)?.neto>0))return toast('Este saldo es un ajuste a compensar, no un pago al productor.');modal(`<h2>Registrar pago</h2><div class="f"><label>Medio</label><select id="pm" class="in"><option>transferencia</option><option>efectivo</option></select></div><div class="acts"><button class="btn ghost" onclick="closeModal()">Cancelar</button><button class="btn pri" onclick="const l=S.liqs.find(x=>x.id==='${id}');l.pagada=now();l.medio=$('#pm').value;audit('Paga liquidación',PR(l.prod).nombre,'pendiente','pagada');save();closeModal();render()">Confirmar</button></div>`)}
 function liqDoc(id){
   const l=S.liqs.find(x=>x.id===id);const pr=PR(l.prod);
@@ -2095,7 +2111,7 @@ function editProducer(id){
   modal(`<h2>${id?'Editar':'Nuevo'} productor / proveedor</h2><div class="f"><label>Nombre</label><input id="p_n" class="in" value="${esc(p.nombre)}"></div><div class="row"><div class="f"><label>Teléfono</label><input id="p_f" class="in" type="tel" value="${esc(p.fono||'')}"></div><div class="f"><label>RUT (opcional)</label><input id="p_r" class="in" value="${esc(p.rut||'')}"></div></div>
   <div class="acts"><button class="btn ghost" onclick="closeModal()">Cancelar</button><button class="btn pri" onclick="saveProducer('${id||''}')">Guardar</button></div>`);
 }
-function saveProducer(id){const d={nombre:$('#p_n').value.trim(),rut:$('#p_r').value.trim(),fono:$('#p_f').value.trim()};if(!d.nombre){toast('Falta el nombre');return}if(id)Object.assign(PR(id),d);else {const producer={id:uid('pr'),...d};S.producers.push(producer);if(view==='prod')lf.prod=producer.id;if(view==='rec'&&recForm)recForm.productor=producer.id}save();closeModal();render()}
+function saveProducer(id){if(id&&!isAdmin())return toast('Solo el administrador edita productores.');const d={nombre:$('#p_n').value.trim(),rut:$('#p_r').value.trim(),fono:$('#p_f').value.trim()};if(!d.nombre){toast('Falta el nombre');return}if(id)Object.assign(PR(id),d);else {const producer={id:uid('pr'),...d};S.producers.push(producer);if(view==='prod')lf.prod=producer.id;if(view==='rec'&&recForm)recForm.productor=producer.id}save();closeModal();render()}
 /* ---------- REPORTES ---------- */
 /* ---------- GASTOS ---------- */
 const monthName=mk=>{const [y,m]=mk.split('-');return ['enero','febrero','marzo','abril','mayo','junio','julio','agosto','septiembre','octubre','noviembre','diciembre'][+m-1]+' '+y};
@@ -2130,6 +2146,7 @@ function drawGasto(){
   <div class="acts"><button class="btn ghost" onclick="closeModal()">Cancelar</button><button class="btn pri" onclick="saveGasto()">Guardar</button></div>`);
 }
 function saveGasto(){
+  if(!isAdmin())return toast('Requiere administrador.');
   const m=parseInt($('#g_m').value),cat=$('#g_c').value,desc=$('#g_d').value.trim();
   if(!(m>0)){toast('Ingresa el monto');return}
   if(gf.tipo==='fijo'){S.fixed.push({id:uid('f'),cat,desc,monto:m,desde:monthKey(now()),hasta:''});audit('Crea gasto fijo',desc||cat,'',clp(m)+'/mes')}
@@ -2150,6 +2167,7 @@ function editFixed(id){
   <div class="acts"><button class="btn bad" onclick="delFixed('${id}')">Eliminar</button>${f.hasta?'':`<button class="btn ghost" onclick="endFixed('${id}')">Dejar de repetir</button>`}<button class="btn ghost" onclick="closeModal()">Cancelar</button><button class="btn pri" onclick="updFixed('${id}')">Guardar</button></div>`);
 }
 function updFixed(id){
+  if(!isAdmin())return toast('Requiere administrador.');
   const f=S.fixed.find(x=>x.id===id),m=parseInt($('#x_m').value),d=$('#x_d').value.trim(),c=$('#x_c').value,mk=monthKey(now());
   if(!(m>0)){toast('Monto inválido');return}
   if(c!==f.cat||d!==f.desc)audit('Edita gasto fijo',f.desc||f.cat,f.cat+' · '+f.desc,c+' · '+d);
@@ -2159,6 +2177,7 @@ function updFixed(id){
   save();closeModal();render();toast('Gasto fijo actualizado');
 }
 function delFixed(id){
+  if(!isAdmin())return toast('Requiere administrador.');
   const f=S.fixed.find(x=>x.id===id);
   modal(`<h2>¿Eliminar gasto fijo?</h2><p class="muted"><b>${esc(f.desc||f.cat)}</b> (${clp(f.monto)}/mes) se quitará de <b>todos</b> los meses, también de los ya cerrados. Si solo quieres que no siga desde ahora, usa “Dejar de repetir”.</p>
   <div class="acts"><button class="btn ghost" onclick="closeModal()">Cancelar</button><button class="btn bad" onclick="S.fixed=S.fixed.filter(x=>x.id!=='${id}');audit('Elimina gasto fijo','${esc(f.desc||f.cat).replace(/'/g,'')}','${clp(f.monto)}/mes','eliminado');save();closeModal();render();toast('Gasto eliminado')">Eliminar</button></div>`);
@@ -2196,6 +2215,7 @@ function delVar(id){
   <div class="acts"><button class="btn ghost" onclick="closeModal()">Cancelar</button><button class="btn bad" onclick="doDelVar('${id}')">Eliminar</button></div>`);
 }
 function doDelVar(id){
+  if(!isAdmin())return toast('Requiere administrador.');
   const e=S.expenses.find(x=>x.id===id);
   if(e.cantidad){const lot=S.lots.find(l=>l.id===e.lot);S.moves.push({id:uid('m'),lot:lot.id,prod:lot.prod,tipo:'anulación',qty:-e.cantidad,user:me.id,fecha:now(),motivo:'Compra de gamelas eliminada',ref:e.id})}
   S.expenses=S.expenses.filter(x=>x.id!==id);
@@ -2555,6 +2575,7 @@ function deleteClient(id){
   <div class="acts"><button class="btn ghost" onclick="closeModal()">Cancelar</button><button class="btn bad" onclick="confirmDeleteClient('${id}')">Borrar</button></div>`);
 }
 function confirmDeleteClient(id){
+  if(!isAdmin())return toast('Solo Luis borra clientes.');
   try{workflowTransaction(()=>{const c=S.clients.find(x=>x.id===id);if(!c)throw new Error('Cliente no encontrado.');if(creditBalance(id)>0)throw new Error('Este cliente tiene deuda.');c.borrado=now();audit('Borra cliente de crédito',c.nombre,'','borrado')});closeModal();render();toast('Cliente borrado')}catch(e){toast(e.message)}
 }
 function abonoForm(id){
@@ -2623,17 +2644,21 @@ function resetData(blank){if(!isAdmin())return toast('Requiere administrador.');
 function editUser(id){
   const u=id?U(id):{nombre:'',usuario:'',rol:'vendedor',turno:'mañana',activo:true};
   modal(`<h2>${id?'Editar':'Nuevo'} usuario</h2><div class="f"><label>Nombre</label><input id="u_n" class="in" value="${esc(u.nombre)}"></div>
-  <div class="row"><div class="f"><label>Rol</label><select id="u_r" class="in"><option value="vendedor" ${u.rol==='vendedor'?'selected':''}>Vendedor</option><option value="admin" ${u.rol==='admin'?'selected':''}>Administrador</option><option value="contador" ${u.rol==='contador'?'selected':''}>Contador(a) · solo lectura</option></select></div><div class="f"><label>Turno</label><select id="u_t" class="in">${['mañana','noche','-'].map(t=>`<option ${u.turno===t?'selected':''}>${t}</option>`).join('')}</select></div></div>
+  <div class="row"><div class="f"><label>Rol</label><select id="u_r" class="in" ${id&&id===me.id?'disabled title="No puedes cambiar tu propio rol"':''}><option value="vendedor" ${u.rol==='vendedor'?'selected':''}>Vendedor</option><option value="admin" ${u.rol==='admin'?'selected':''}>Administrador</option><option value="contador" ${u.rol==='contador'?'selected':''}>Contador(a) · solo lectura</option></select></div><div class="f"><label>Turno</label><select id="u_t" class="in">${['mañana','noche','-'].map(t=>`<option ${u.turno===t?'selected':''}>${t}</option>`).join('')}</select></div></div>
   <div class="row"><div class="f"><label>Usuario</label><input id="u_u" class="in" autocapitalize="none" value="${esc(u.usuario||'')}"></div>
   <div class="f"><label>${id?'Nueva contraseña (vacío = no cambiar)':'Contraseña'}</label><input id="u_p" class="in" type="password" inputmode="numeric" maxlength="6" autocomplete="new-password" placeholder="6 números"></div></div>
   ${id&&id!==me.id?`<label class="f" style="flex-direction:row;align-items:center"><input id="u_a" type="checkbox" ${u.activo?'checked':''}> Activo (desactivar cierra su sesión)</label>`:''}
   <div class="acts"><button class="btn ghost" onclick="closeModal()">Cancelar</button><button class="btn pri" onclick="saveUser('${id||''}')">Guardar</button></div>`);
 }
 function saveUser(id){
+  if(!isAdmin())return toast('Requiere administrador.');
   const n=$('#u_n').value.trim(),usr=$('#u_u').value.trim().toLowerCase(),pin=$('#u_p').value;
   if(!n||!usr){toast('Nombre y usuario son obligatorios');return}if(pin&&!PW_OK(pin)){toast('La contraseña debe tener exactamente 6 números');return}if(!id&&!pin){toast('Ingresa una contraseña');return}
   if(S.users.some(u=>u.usuario===usr&&u.id!==id)){toast('Ese usuario ya existe');return}
   const d={nombre:n,usuario:usr,rol:$('#u_r').value,turno:$('#u_t').value};
+  if(id===me.id&&d.rol!==me.rol){toast('No puedes cambiar tu propio rol. Pídeselo a otro administrador.');return}
+  const nextActive=id&&$('#u_a')?$('#u_a').checked:true,wasAdmin=id&&U(id).rol==='admin'&&U(id).activo;
+  if(wasAdmin&&(d.rol!=='admin'||!nextActive)&&S.users.filter(u=>u.rol==='admin'&&u.activo&&u.id!==id).length===0){toast('Debe quedar al menos un administrador activo.');return}
   if(id){const u=U(id);if(pin)d.clave=pin;if($('#u_a'))d.activo=$('#u_a').checked;audit('Edita usuario',u.nombre,u.rol+'/'+(u.activo?'activo':'inactivo'),d.rol+'/'+((d.activo??u.activo)?'activo':'inactivo')+(pin?' · contraseña restablecida':''));Object.assign(u,d)}
   else{S.users.push({id:uid('u'),...d,clave:pin,activo:true});audit('Crea usuario',n,'',d.rol)}
   save();closeModal();render();toast('Usuario guardado');

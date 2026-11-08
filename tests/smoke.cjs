@@ -302,10 +302,10 @@ run(`globalThis.lastToast='';receipt('${otherSale}')`);assert.match(context.last
 run("render()");assert(root.innerHTML.includes('Cambiar contraseña'));
 const pw=(o,n,r)=>{context.document.querySelector=s=>s==='#root'?root:s==='#pw-old'?{value:o}:s==='#pw-new'?{value:n}:s==='#pw-rep'?{value:r}:fake;run("savePw()")};
 context.setTimeout=()=>0;run("pwForm()");assert(context.capture.includes('Contraseña actual'));
-pw('mala','123456','123456');assert.equal(run("me.clave"),'222222','clave actual incorrecta no cambia');
-pw('222222','1234','1234');assert.equal(run("me.clave"),'222222','6 números');pw('222222','abcdef','abcdef');assert.equal(run("me.clave"),'222222','solo números');
-pw('222222','123456','123457');assert.equal(run("me.clave"),'222222','deben coincidir');
-pw('222222','123456','123456');assert.equal(run("me.clave"),'123456');
+pw('mala','123456','123456');assert.equal(run("me.clave"),'111111','clave actual incorrecta no cambia');
+pw('111111','1234','1234');assert.equal(run("me.clave"),'111111','6 números');pw('111111','abcdef','abcdef');assert.equal(run("me.clave"),'111111','solo números');
+pw('111111','123456','123457');assert.equal(run("me.clave"),'111111','deben coincidir');
+pw('111111','123456','123456');assert.equal(run("me.clave"),'123456');
 pw('123456','654321','654321');assert.equal(run("me.clave"),'654321');assert.match(context.lastToast,/Ya no puedes/);
 pw('654321','987654','987654');assert.equal(run("me.clave"),'654321','tercer cambio del día bloqueado');
 run("globalThis.lastToast='';pwForm()");assert.match(context.lastToast,/2 veces hoy/);

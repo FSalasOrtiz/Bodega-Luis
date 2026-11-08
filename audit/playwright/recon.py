@@ -3,7 +3,7 @@ import json, os, sys
 from playwright.sync_api import sync_playwright
 BASE = os.environ.get('BASE', 'http://localhost:8123/bodega-lo-valledor.html')
 OUT = os.path.join(os.path.dirname(__file__), '..', 'capturas')
-ROLES = {'luis': '123456', 'gonzalo': '111111', 'genesis': '333333'}
+ROLES = {'luis': '111111', 'gonzalo': '111111', 'genesis': '111111'}
 report = {}
 with sync_playwright() as p:
     b = p.chromium.launch(headless=True)

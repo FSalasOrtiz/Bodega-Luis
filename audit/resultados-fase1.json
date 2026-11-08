@@ -20,7 +20,7 @@
   "tipo": "negativo",
   "estado": "APROBADA",
   "detalle": "Usuario o contraseña incorrectos",
-  "seg": 1.5
+  "seg": 1.6
  },
  {
   "id": "AUTH-03",
@@ -59,7 +59,7 @@
   "tipo": "negativo",
   "estado": "APROBADA",
   "detalle": "rechazado tras desactivar",
-  "seg": 2.5
+  "seg": 2.6
  },
  {
   "id": "AUTH-07",
@@ -105,7 +105,7 @@
   "caso": "Las contraseñas no son legibles por cualquier usuario del navegador",
   "tipo": "seguridad",
   "estado": "FALLIDA",
-  "detalle": "Vendedor lee todas las claves en texto plano desde localStorage: ['luis:123456', 'gonzalo:111111', 'samuel:222222', 'genesis:333333']",
+  "detalle": "Vendedor lee todas las claves en texto plano desde localStorage: ['luis:111111', 'gonzalo:111111', 'samuel:111111', 'genesis:111111']",
   "seg": 1.6
  },
  {
@@ -115,7 +115,7 @@
   "tipo": "seguridad",
   "estado": "FALLIDA",
   "detalle": "Con me.rol=\"admin\" en consola obtiene el menú ['dash', 'pos', 'rec', 'inv', 'sales', 'caja', 'credits', 'prod', 'bal', 'users']; también cambió un precio a $1 y persistió.",
-  "seg": 2.1
+  "seg": 2.2
  },
  {
   "id": "AUTH-11",
@@ -132,16 +132,19 @@
    "ok2": "OK",
    "tercera": "FORM_BLOQUEADO:Ya cambiaste tu contraseña 2 veces hoy. Inténtalo mañana."
   },
-  "seg": 5.2
+  "seg": 5.1
  },
  {
   "id": "AUTH-12",
   "modulo": "Usuarios",
   "caso": "El administrador no puede quitarse su propio rol (bloqueo total)",
   "tipo": "negativo",
-  "estado": "FALLIDA",
-  "detalle": "El único administrador se cambió a vendedor; quedan 0 administradores activos",
-  "seg": 2.3
+  "estado": "APROBADA",
+  "detalle": {
+   "selector_rol_propio_deshabilitado": true,
+   "admins_activos": 1
+  },
+  "seg": 2.4
  },
  {
   "id": "POS-01",
@@ -152,7 +155,7 @@
   "detalle": {
    "total": 42000,
    "total_ui": "Total $42.000",
-   "stock": "69->67",
+   "stock": "75->73",
    "vendedor": "u2"
   },
   "seg": 3.7
@@ -163,7 +166,7 @@
   "caso": "No permite vender más stock del disponible",
   "tipo": "negativo",
   "estado": "APROBADA",
-  "detalle": "No alcanza: quedan 74 gam.",
+  "detalle": "No alcanza: quedan 53 gam.",
   "seg": 2.1
  },
  {
@@ -189,13 +192,12 @@
     "sub": "$0"
    },
    "2,5": {
-    "ok_disabled": false,
-    "err": "",
-    "sub": "$50.000",
-    "qty_en_carrito": 3
+    "ok_disabled": true,
+    "err": "Las gamelas deben ser un número entero.",
+    "sub": "$50.000"
    }
   },
-  "seg": 4.6
+  "seg": 4.4
  },
  {
   "id": "POS-04",
@@ -204,12 +206,12 @@
   "tipo": "positivo",
   "estado": "APROBADA",
   "detalle": {
-   "stock_compra_directa_kg": 347.0000000000001,
+   "stock_compra_directa_kg": 245.36000000000016,
    "ok_disabled": false,
    "err": "",
    "sub": "$5.500"
   },
-  "seg": 2.6
+  "seg": 2.7
  },
  {
   "id": "POS-05",
@@ -229,7 +231,7 @@
     "PAL-GRA"
    ]
   },
-  "seg": 2.3
+  "seg": 2.4
  },
  {
   "id": "POS-06",
@@ -246,8 +248,8 @@
   "caso": "Doble clic en \"Registrar venta\" crea una sola venta",
   "tipo": "extremo",
   "estado": "APROBADA",
-  "detalle": "994->995 (reintento con misma clave no duplica)",
-  "seg": 3.3
+  "detalle": "976->977 (reintento con misma clave no duplica)",
+  "seg": 3.2
  },
  {
   "id": "POS-08",
@@ -260,7 +262,7 @@
    "rut_invalido": "Ingresa un RUT válido del cliente para la factura, con guion y dígito verificador.",
    "rut_valido": "factura"
   },
-  "seg": 4.2
+  "seg": 4.0
  },
  {
   "id": "POS-09",
@@ -289,7 +291,7 @@
    "toast": "botón \"Revisar venta\" deshabilitado",
    "hint": "ahora?\nTotal de la venta $17.000 · queda a crédito $17.000 (todo a crédito)\nNombre del cliente\nCliente nuevo: se agrega al módulo de créditos.\n\nPedir autorización a Luis\n\nTotal\n$17.000\nPaga ahora\n$0\nQueda a crédito\n$17.000\n\nPara registrar la venta, Luis tiene que autorizar el crédito.\n\nRevisar venta"
   },
-  "seg": 2.4
+  "seg": 2.3
  },
  {
   "id": "POS-11",
@@ -299,12 +301,12 @@
   "estado": "APROBADA",
   "detalle": [
    {
-    "prod": "px7fduxv",
+    "prod": "pd5h9cjh",
     "qty": 3,
     "src": "consig"
    }
   ],
-  "seg": 2.9
+  "seg": 3.0
  },
  {
   "id": "POS-12",
@@ -349,7 +351,7 @@
   "estado": "APROBADA",
   "detalle": {
    "producto": "TOM-C9",
-   "stock": "68->78",
+   "stock": "82->92",
    "toast": "Recepción guardada · stock disponible",
    "comprobante_abierto": true
   },
@@ -366,7 +368,7 @@
    "-5": "Ingresa al menos una cantidad.",
    "abc": "Ingresa al menos una cantidad."
   },
-  "seg": 4.0
+  "seg": 4.1
  },
  {
   "id": "REC-03",
@@ -375,9 +377,8 @@
   "tipo": "extremo",
   "estado": "APROBADA",
   "detalle": {
-   "stock": "64->67",
-   "toast": "Recepción guardada · stock disponible",
-   "nota": "gamela no entera se redondea sin aviso"
+   "stock": "44->44",
+   "toast": "Las gamelas deben ser números enteros (sin decimales)."
   },
   "seg": 2.6
  },
@@ -401,7 +402,7 @@
   "tipo": "positivo",
   "estado": "APROBADA",
   "detalle": {
-   "stock": "80->75",
+   "stock": "75->70",
    "sin_motivo": "Escribe el motivo"
   },
   "seg": 4.6
@@ -423,7 +424,7 @@
   "estado": "APROBADA",
   "detalle": {
    "producto": "TOM-C9",
-   "stock": "77->75",
+   "stock": "79->77",
    "toast": "Merma registrada.",
    "motivo_guardado": "Merma registrada"
   },
@@ -436,20 +437,11 @@
   "tipo": "negativo",
   "estado": "APROBADA",
   "detalle": {
-   "73": "botón deshabilitado",
+   "69": "botón deshabilitado",
    "0": "botón deshabilitado",
    "1,5": "Ingresa una cantidad válida dentro del stock disponible."
   },
   "seg": 2.9
- },
- {
-  "id": "MER-03",
-  "modulo": "Merma",
-  "caso": "La merma permite indicar el motivo (podrido, dañado, descarte, reacondicionado)",
-  "tipo": "requisito",
-  "estado": "FALLIDA",
-  "detalle": "El formulario de merma no pide motivo; el movimiento se guarda siempre como \"Merma registrada\" (el documento de módulos lo exige)",
-  "seg": 2.1
  },
  {
   "id": "INV-01",
@@ -461,10 +453,10 @@
    "dup": "Ese SKU ya existe",
    "sin_precio": "Ingresa el precio",
    "sin_familia": "Selecciona una familia identificada.",
-   "precio_neg": "Ingresa el precio",
+   "precio_neg": "Precio inválido",
    "ok": "Producto guardado"
   },
-  "seg": 5.2
+  "seg": 5.1
  },
  {
   "id": "INV-02",
@@ -475,7 +467,7 @@
   "detalle": {
    "nuevo": 21000,
    "venta_antigua_conserva": 18000,
-   "pos": "TOM-C8 Tomate calibre 8 Quedan 51 gam. $21.000 /gamela"
+   "pos": "TOM-C8 Tomate calibre 8 Quedan 56 gam. $21.000 /gamela"
   },
   "seg": 2.3
  },
@@ -495,15 +487,15 @@
     18000
    ],
    "15000.7": [
-    "Nuevo precio Tomate calibre 8: $15.000",
-    15000
+    "El precio va en pesos enteros, sin decimales.",
+    18000
    ],
    "999999999999": [
-    "Nuevo precio Tomate calibre 8: $999.999.999.999",
-    999999999999
+    "El precio no puede superar $10.000.000.",
+    18000
    ]
   },
-  "seg": 3.6
+  "seg": 4.0
  },
  {
   "id": "INV-04",
@@ -515,21 +507,24 @@
    "sin_motivo": "Cantidad y motivo son obligatorios",
    "negativo": "El lote quedaría negativo",
    "ok": "Ajuste registrado",
-   "decimal_gamela": "Ajuste registrado",
-   "stock": "50->53",
-   "ultimo_mov_qty": 0,
-   "ultimo_mov_motivo": "prueba decimal"
+   "decimal_gamela": "Las gamelas se ajustan en números enteros.",
+   "stock": "86->89",
+   "ultimo_mov_qty": 3,
+   "ultimo_mov_motivo": "Conteo físico"
   },
-  "seg": 3.6
+  "seg": 3.7
  },
  {
   "id": "INV-05",
   "modulo": "Inventario",
   "caso": "Ajustar stock de un producto nuevo sin lotes",
   "tipo": "extremo",
-  "estado": "FALLIDA",
-  "detalle": "Sin lotes (0 opciones) se registra un movimiento con lote vacío: [{'id': 'mo3ltqhg', 'lot': '', 'prod': 'pqa', 'tipo': 'ajuste', 'qty': 5, 'user': 'u1', 'fecha': 1794099208036, 'motivo': 'inicial', 'ref': ''}]; stock calculado 5; toast \"Ajuste registrado\"",
-  "seg": 2.0
+  "estado": "APROBADA",
+  "detalle": {
+   "toast": "QA sin lotes todavía no tiene lotes: el stock entra con una recepción.",
+   "stock": 0
+  },
+  "seg": 1.8
  },
  {
   "id": "INV-06",
@@ -542,7 +537,7 @@
    "cabecera_admin": "SKU\tProducto\tFamilia\tUnidad\tPrecio\tConsignación\tCompra directa\tStock total\tLlegó hoy\tVendido hoy\t | ",
    "cabecera_vendedor": "Producto\tPrecio\tConsignación\tCompra directa\tStock total | "
   },
-  "seg": 2.8
+  "seg": 2.9
  },
  {
   "id": "HIS-01",
@@ -553,7 +548,7 @@
   "detalle": {
    "sin_motivo": "El motivo es obligatorio.",
    "toast": "Venta anulada.",
-   "stock": "35->37",
+   "stock": "74->76",
    "estado": "completada"
   },
   "seg": 4.8
@@ -563,8 +558,11 @@
   "modulo": "Historial",
   "caso": "Anular una venta histórica (datos previos) informa su estado real",
   "tipo": "negativo",
-  "estado": "FALLIDA",
-  "detalle": "Mensaje \"Venta anulada.\" pero la reversión queda en \"pendiente_verificacion\" (estado venta \"vigente\") y el stock no vuelve: el mensaje no refleja el resultado",
+  "estado": "APROBADA",
+  "detalle": {
+   "toast": "Anulación registrada, pero queda pendiente: el documento de esta venta debe verificarse antes de completarla. El stock y el dinero aún no se devuelven.",
+   "estado": "pendiente_verificacion"
+  },
   "seg": 2.2
  },
  {
@@ -577,7 +575,7 @@
    "solicitud": true,
    "aviso_admin": true
   },
-  "seg": 2.6
+  "seg": 2.5
  },
  {
   "id": "HIS-03",
@@ -587,9 +585,9 @@
   "estado": "APROBADA",
   "detalle": {
    "vendedor_solo_propias": true,
-   "filtro_transferencia": 389
+   "filtro_transferencia": 382
   },
-  "seg": 2.7
+  "seg": 2.8
  },
  {
   "id": "HIS-04",
@@ -600,11 +598,11 @@
   "detalle": {
    "invertido": "La fecha \"desde\" no puede ser posterior a \"hasta\".",
    "boton_deshabilitado": true,
-   "conteo": "966 ventas en el periodo.",
+   "conteo": "984 ventas en el periodo.",
    "csv_cabecera": "\"N°\";\"Documento\";\"Fecha\";\"Vendedor\";\"RUT cliente\";\"Razón social\";\"Giro\";\"Dirección\";\"Comuna\";\"Detalle\";\"Medio de pago\";\"Neto\";\"IVA\";\"Total\";\"Estado\"",
-   "csv_lineas": 967
+   "csv_lineas": 985
   },
-  "seg": 2.2
+  "seg": 2.5
  },
  {
   "id": "HIS-05",
@@ -625,11 +623,11 @@
   "tipo": "positivo",
   "estado": "APROBADA",
   "detalle": {
-   "esperado": "$24.266.859",
+   "esperado": "$24.799.010",
    "vacío": "Ingresa un efectivo contado válido.",
    "negativo": "Ingresa un efectivo contado válido.",
    "ok": "Turno cerrado. Luis lo verá para aprobarlo.",
-   "diferencia": -24166859,
+   "diferencia": -24699010,
    "aviso_dash": true,
    "aprobado_por": "u1"
   },
@@ -659,7 +657,7 @@
    "final": 0,
    "toast_final": "Deuda de Cliente QA saldada."
   },
-  "seg": 5.6
+  "seg": 5.7
  },
  {
   "id": "CRE-02",
@@ -668,10 +666,10 @@
   "tipo": "negativo",
   "estado": "APROBADA",
   "detalle": {
-   "abono_mayor": "El abono supera la deuda ($168.000).",
-   "borrar_con_deuda": "Sergio debe $168.000. Primero tiene que pagar su deuda."
+   "abono_mayor": "El abono supera la deuda ($162.000).",
+   "borrar_con_deuda": "Sergio debe $162.000. Primero tiene que pagar su deuda."
   },
-  "seg": 2.5
+  "seg": 2.7
  },
  {
   "id": "PRD-01",
@@ -682,11 +680,11 @@
   "detalle": {
    "sin_nombre": "Falta el nombre",
    "liquidacion": {
-    "neto": 46332900,
-    "comision": 5148100,
-    "monto": 51481000
+    "neto": 45809550,
+    "comision": 5089950,
+    "monto": 50899500
    },
-   "liquidaciones_mismo_periodo_tras_2_clics": 2
+   "liquidaciones_mismo_periodo_tras_2_clics": 1
   },
   "seg": 4.3
  },
@@ -701,7 +699,32 @@
    "ok": "Gasto registrado",
    "export": "ventas-2026-11-07.csv"
   },
-  "seg": 2.9
+  "seg": 2.8
+ },
+ {
+  "id": "BAL-02",
+  "modulo": "Balance",
+  "caso": "Montos negativos con formato -$",
+  "tipo": "positivo",
+  "estado": "APROBADA",
+  "detalle": [
+   "-$1.403.595",
+   "$2.500",
+   "$0"
+  ],
+  "seg": 1.5
+ },
+ {
+  "id": "USR-03",
+  "modulo": "Usuarios",
+  "caso": "Desactivar al último administrador se rechaza",
+  "tipo": "negativo",
+  "estado": "APROBADA",
+  "detalle": {
+   "desactiva_admin_secundario": true,
+   "rol_propio_bloqueado": true
+  },
+  "seg": 3.3
  },
  {
   "id": "USR-01",
@@ -732,7 +755,7 @@
     "sesion": true
    }
   },
-  "seg": 2.4
+  "seg": 2.5
  },
  {
   "id": "STO-01",
@@ -741,9 +764,9 @@
   "tipo": "riesgo",
   "estado": "APROBADA",
   "detalle": {
-   "bytes_60_dias_demo": 1422227,
-   "ventas": 1001,
-   "movimientos": 2276,
+   "bytes_60_dias_demo": 1351077,
+   "ventas": 951,
+   "movimientos": 2175,
    "bytes_por_venta_aprox": 1421,
    "ventas_hasta_5MB_aprox": 3519
   },
@@ -754,9 +777,12 @@
   "modulo": "Persistencia",
   "caso": "Si localStorage falla, el usuario recibe aviso y no pierde datos en silencio",
   "tipo": "negativo",
-  "estado": "FALLIDA",
-  "detalle": "Cambio de precio mostró \"Nuevo precio Tomate calibre 8: $23.456\" pero tras recargar el precio es 18000: pérdida silenciosa. Venta: \"No se pudo guardar la operación; no se completó el cambio. QuotaExceededError\"",
-  "seg": 4.3
+  "estado": "APROBADA",
+  "detalle": {
+   "precio": "No se pudo guardar el cambio en este equipo: no quedó registrado. Revisa el espacio disponible e inténtalo de nuevo.",
+   "venta": "No se pudo guardar el cambio en este equipo: no quedó registrado. Revisa el espacio disponible e inténtalo de nuevo."
+  },
+  "seg": 4.5
  },
  {
   "id": "STO-03",
@@ -765,10 +791,10 @@
   "tipo": "concurrencia",
   "estado": "APROBADA",
   "detalle": {
-   "ventas": "1010->1011",
+   "ventas": "982->983",
    "precio_B": 24680
   },
-  "seg": 4.9
+  "seg": 4.8
  },
  {
   "id": "STO-04",
@@ -776,17 +802,29 @@
   "caso": "Dos pestañas sin evento de sincronía (otro dispositivo) pierden escrituras",
   "tipo": "concurrencia",
   "estado": "FALLIDA",
-  "detalle": "La escritura con copia antigua borró la venta recién hecha (971 -> 970). Sin backend no hay sincronización entre dispositivos.",
-  "seg": 3.8
+  "detalle": "La escritura con copia antigua borró la venta recién hecha (981 -> 980). Sin backend no hay sincronización entre dispositivos.",
+  "seg": 3.9
  },
  {
   "id": "RESP-01",
   "modulo": "Responsive",
   "caso": "Sin scroll horizontal en móvil (390), tablet (768) y escritorio (1440); barra inferior en móvil",
   "tipo": "positivo",
-  "estado": "FALLIDA",
-  "detalle": "[\"768px luis/bal: desborde horizontal 28px ['B.num']\"]",
-  "seg": 32.6
+  "estado": "APROBADA",
+  "detalle": {
+   "capturas": [
+    "audit/capturas/resp-390-luis-dash.png",
+    "audit/capturas/resp-390-luis-pos.png",
+    "audit/capturas/resp-390-luis-rec.png",
+    "audit/capturas/resp-390-luis-sales.png",
+    "audit/capturas/resp-390-luis-bal.png",
+    "audit/capturas/resp-768-luis-pos.png",
+    "audit/capturas/resp-768-luis-inv.png",
+    "audit/capturas/resp-768-gonzalo-pos.png",
+    "audit/capturas/resp-768-gonzalo-inv.png"
+   ]
+  },
+  "seg": 32.2
  },
  {
   "id": "RESP-02",
@@ -795,7 +833,7 @@
   "tipo": "positivo",
   "estado": "APROBADA",
   "detalle": {
-   "ventas": "977->978",
+   "ventas": "979->980",
    "captura": "audit/capturas/resp-390-venta-comprobante.png"
   },
   "seg": 5.6
@@ -836,6 +874,6 @@
    "pos": "Punto de venta",
    "errores_js": []
   },
-  "seg": 1.9
+  "seg": 1.8
  }
 ]
