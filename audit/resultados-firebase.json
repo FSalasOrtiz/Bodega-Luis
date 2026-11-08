@@ -1,0 +1,52 @@
+[
+ {
+  "id": "FB-01",
+  "estado": "APROBADA",
+  "detalle": "Usuario o contraseña incorrectos"
+ },
+ {
+  "id": "FB-02",
+  "estado": "APROBADA",
+  "detalle": "ventas cargadas 975"
+ },
+ {
+  "id": "FB-03",
+  "estado": "APROBADA",
+  "detalle": "usuarios sin campo clave"
+ },
+ {
+  "id": "FB-04",
+  "estado": "APROBADA",
+  "detalle": "N° 1976 (esperado 1976) stock 81->79"
+ },
+ {
+  "id": "FB-05",
+  "estado": "APROBADA",
+  "detalle": "venta presente=True, stock tras recargar 79 (antes 79)"
+ },
+ {
+  "id": "FB-06",
+  "estado": "APROBADA",
+  "detalle": "Luis recibió la venta de Gonzalo sin recargar"
+ },
+ {
+  "id": "FB-07",
+  "estado": "APROBADA",
+  "detalle": "una sola venta aceptada (A=True, B=False); stock final 0; aviso: "
+ },
+ {
+  "id": "FB-08",
+  "estado": "APROBADA",
+  "detalle": "samuel inactivo=True, login bloqueado=True: Usuario o contraseña incorrectos"
+ },
+ {
+  "id": "FB-09",
+  "estado": "APROBADA",
+  "detalle": "usuario creado por la función entra con su clave"
+ },
+ {
+  "id": "FB-10",
+  "estado": "APROBADA",
+  "detalle": "errores JS: []"
+ }
+]

@@ -52,6 +52,8 @@ export interface Product {
   usaGamela: boolean;
   activo: boolean;
   envase?: boolean;
+  /** Posición en el catálogo (orden de creación). */
+  pos?: number;
 }
 
 export interface Producer {

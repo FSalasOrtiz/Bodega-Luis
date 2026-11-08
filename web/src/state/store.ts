@@ -1,4 +1,4 @@
-import { enablePatches, freeze, isDraft, current, produceWithPatches, setAutoFreeze } from 'immer';
+import { enablePatches, freeze, isDraft, current, produce, produceWithPatches, setAutoFreeze } from 'immer';
 import { useSyncExternalStore } from 'react';
 import type { PosDraft, State } from '../types/model';
 import type { DataStore } from '../services/datastore';
@@ -93,8 +93,23 @@ export const store = {
       if (patches.length) {
         if (!datastore) throw new Error('El almacenamiento no está listo.');
         const changes = changesFrom(prev, next, patches);
-        await datastore.commit(changes, next);
-        publish({ S: next });
+        const fixups = await datastore.commit(changes, next, prev);
+        let final = next;
+        if (fixups && fixups.length) {
+          final = produce(next, (d) => {
+            for (const f of fixups) {
+              const doc = (d[f.col] as { id: string }[]).find((x) => x.id === f.id);
+              if (doc) Object.assign(doc, f.patch);
+            }
+          });
+          // el resultado devuelto (p. ej. la venta) refleja el número definitivo
+          const r = result as unknown as { id?: string } | undefined;
+          if (r && typeof r === 'object' && r.id) {
+            const fx = fixups.find((f) => f.id === r.id);
+            if (fx) result = { ...(result as object), ...fx.patch } as T;
+          }
+        }
+        publish({ S: final });
       }
       return result as T;
     });

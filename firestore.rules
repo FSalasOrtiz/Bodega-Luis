@@ -1,0 +1,195 @@
+rules_version = '2';
+// Reglas de seguridad de Bodega Lo Valledor.
+// Principio: todo está denegado salvo lo permitido explícitamente.
+// El rol y el estado (activo) se leen del documento users/{uid}, que solo escribe la Cloud Function `saveUser`.
+// Cada documento lleva _u (fecha del servidor) y _v (versión): las actualizaciones deben subir _v en 1 (control de concurrencia).
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // ---------- identidad y rol ----------
+    function signedIn() { return request.auth != null; }
+    function userDoc() { return get(/databases/$(database)/documents/users/$(request.auth.uid)); }
+    function active() { return signedIn() && exists(/databases/$(database)/documents/users/$(request.auth.uid)) && userDoc().data.activo == true; }
+    function role() { return userDoc().data.rol; }
+    function isAdmin() { return active() && role() == 'admin'; }
+    function isSeller() { return active() && role() == 'vendedor'; }
+    function isAccountant() { return active() && role() == 'contador'; }
+    function staff() { return isAdmin() || isSeller(); }
+    function anyRole() { return staff() || isAccountant(); }
+
+    // ---------- validaciones comunes ----------
+    function data() { return request.resource.data; }
+    function stampedCreate() { return data()._u == request.time && data()._v == 1; }
+    function stampedUpdate() { return data()._u == request.time && data()._v == resource.data._v + 1; }
+    function changed() { return data().diff(resource.data).affectedKeys(); }
+    function onlyChanged(keys) { return changed().hasOnly(keys.concat(['_u', '_v'])); }
+    function idMatches(id) { return data().id == id; }
+    function isTombstone() { return data().keys().hasOnly(['id', '_deleted', '_u', '_v']) && data()._deleted == true; }
+    // la fecha que pone el dispositivo no puede alejarse más de 15 minutos de la hora del servidor
+    function nowish(field) { return data()[field] is number && math.abs(data()[field] - request.time.toMillis()) < 900000; }
+    function mine(field) { return data()[field] == request.auth.uid; }
+
+    // Regla genérica para colecciones operativas:
+    //  - create: autorizado, sello válido, id coherente
+    //  - update: sello y versión válidos
+    function canCreate(allowed, id) { return allowed && stampedCreate() && idMatches(id); }
+    function canUpdate(allowed) { return allowed && stampedUpdate(); }
+
+    // ---------- configuración y contadores ----------
+    match /meta/app {
+      allow read: if anyRole();
+      allow create, update: if isAdmin() && data()._u == request.time && !('clave' in data().cfg);
+    }
+    match /meta/counters {
+      allow read: if staff();
+      // el número de venta solo avanza de uno en uno (dentro de la transacción de la venta)
+      allow update: if staff() && changed().hasOnly(['saleNum', '_u']) && data().saleNum == resource.data.saleNum + 1;
+      allow create: if isAdmin();
+    }
+
+    // ---------- usuarios: solo lectura; los escribe la Cloud Function ----------
+    match /users/{uid} {
+      allow read: if anyRole();
+      // cada usuario registra sus propios cambios de contraseña (límite diario del vendedor); nunca la clave
+      allow update: if active() && request.auth.uid == uid && onlyChanged(['cambiosClave']) && stampedUpdate();
+    }
+
+    // ---------- catálogo ----------
+    match /products/{id} {
+      allow read: if anyRole();
+      allow create: if canCreate(isAdmin(), id) && data().precio is int && data().precio > 0;
+      allow update: if canUpdate(isAdmin()) && data().precio is int && data().precio > 0;
+    }
+    match /prices/{id} {
+      allow read: if isAdmin();
+      allow create: if canCreate(isAdmin(), id);
+    }
+    match /producers/{id} {
+      allow read: if staff();
+      allow create: if canCreate(staff(), id) && data().nombre is string && data().nombre.size() > 0;
+      allow update: if canUpdate(isAdmin());
+    }
+
+    // ---------- stock ----------
+    match /receptions/{id} {
+      allow read: if staff();
+      allow create: if canCreate(staff(), id) && mine('user') && nowish('fecha') && data().anulada == false;
+      // solo el administrador anula (corrige) una recepción
+      allow update: if canUpdate(isAdmin());
+    }
+    match /lots/{id} {
+      allow read: if staff();
+      allow create: if canCreate(staff(), id);
+      allow update: if canUpdate(isAdmin());
+    }
+    // libro de movimientos: solo se agregan; nunca se modifican ni se borran
+    match /moves/{id} {
+      allow read: if staff();
+      allow create: if canCreate(staff(), id) && (isAdmin() || mine('user')) && data().qty is number && nowish('fecha');
+    }
+    // saldo por lote, mantenido en la misma transacción que los movimientos (evita vender dos veces lo mismo)
+    match /stock/{lot} {
+      allow read: if staff();
+      allow create: if staff() && data().saldo is number && (data().envase == true || data().saldo >= -0.001);
+      allow update: if staff() && data().saldo is number && (resource.data.envase == true || data().saldo >= -0.001);
+    }
+
+    // ---------- ventas ----------
+    match /sales/{id} {
+      allow read: if anyRole();
+      allow create: if canCreate(staff(), id) && mine('vendedor') && nowish('fecha') && data().total is number && data().estado == 'vigente';
+      allow update: if canUpdate(isAdmin())
+        // el vendedor solo pide anulación o cierra su turno sobre sus propias ventas
+        || canUpdate(isSeller() && resource.data.vendedor == request.auth.uid && onlyChanged(['solicitud', 'solicitudFecha', 'workflowEvents', 'cierre']));
+    }
+    match /operations/{id} {
+      allow read: if isAdmin();
+      allow create: if canCreate(staff(), id);
+      allow update: if canUpdate(isAdmin());
+    }
+    match /refunds/{id} {
+      allow read: if staff();
+      allow create: if canCreate(isAdmin(), id);
+      allow update: if canUpdate(isAdmin()) || canUpdate(isSeller() && resource.data.cashier == request.auth.uid && onlyChanged(['cierre']));
+    }
+    match /adjustments/{id} {
+      allow read: if isAdmin();
+      allow create: if canCreate(isAdmin(), id);
+    }
+    match /fiscalEvents/{id} {
+      allow read: if isAdmin();
+      allow create: if canCreate(isAdmin(), id);
+    }
+
+    // ---------- caja ----------
+    match /closures/{id} {
+      allow read: if isAdmin() || (isSeller() && resource.data.vendedor == request.auth.uid);
+      allow create: if canCreate(staff(), id) && mine('vendedor') && nowish('fecha') && data().aprobado == '';
+      // solo Luis aprueba
+      allow update: if canUpdate(isAdmin()) && onlyChanged(['aprobado']);
+    }
+
+    // ---------- créditos ----------
+    match /clients/{id} {
+      allow read: if anyRole();
+      // el vendedor crea el cliente al vender a crédito con autorización de Luis
+      allow create: if canCreate(staff(), id);
+      allow update: if canUpdate(isAdmin());
+    }
+    match /creditPayments/{id} {
+      allow read: if staff();
+      allow create: if canCreate(isAdmin(), id) && data().monto is int && data().monto > 0;
+      allow update: if canUpdate(isAdmin()) || canUpdate(isSeller() && resource.data.user == request.auth.uid && onlyChanged(['cierre']));
+    }
+
+    // ---------- autorizaciones (crédito, precio, comisión, pago de deuda) ----------
+    match /creditRequests/{id} {
+      allow read: if staff();
+      allow create: if canCreate(isSeller(), id) && mine('user') && data().estado == 'pendiente';
+      allow update: if canUpdate(isAdmin()) || canUpdate(isSeller() && resource.data.user == request.auth.uid && onlyChanged(['estado', 'resueltoEn', 'saleId']) && data().estado in ['cancelada', 'usada', 'vencida']);
+    }
+    match /priceRequests/{id} {
+      allow read: if staff();
+      allow create: if canCreate(isSeller(), id) && mine('user') && data().estado == 'pendiente';
+      allow update: if canUpdate(isAdmin()) || canUpdate(isSeller() && resource.data.user == request.auth.uid && onlyChanged(['estado', 'resueltoEn', 'saleId']) && data().estado in ['cancelada', 'usada', 'vencida']);
+    }
+    match /comRequests/{id} {
+      allow read: if staff();
+      allow create: if canCreate(isSeller(), id) && mine('user') && data().estado == 'pendiente';
+      allow update: if canUpdate(isAdmin()) || canUpdate(isSeller() && resource.data.user == request.auth.uid && onlyChanged(['estado', 'resueltoEn', 'saleId']) && data().estado in ['cancelada', 'usada', 'vencida']);
+    }
+    match /abonoRequests/{id} {
+      allow read: if staff();
+      allow create: if canCreate(isSeller(), id) && mine('user') && data().estado == 'pendiente' && data().monto is int && data().monto > 0;
+      allow update: if canUpdate(isAdmin()) || canUpdate(isSeller() && resource.data.user == request.auth.uid && onlyChanged(['estado', 'resueltoEn']) && data().estado == 'cancelada');
+    }
+
+    // ---------- administración: solo Luis ----------
+    match /liqs/{id} {
+      allow read: if isAdmin();
+      allow create: if canCreate(isAdmin(), id);
+      allow update: if canUpdate(isAdmin());
+    }
+    match /expenses/{id} {
+      allow read: if isAdmin();
+      allow create: if canCreate(isAdmin(), id);
+      allow update: if canUpdate(isAdmin());
+    }
+    match /fixed/{id} {
+      allow read: if isAdmin();
+      allow create: if canCreate(isAdmin(), id);
+      allow update: if canUpdate(isAdmin());
+    }
+    match /notes/{id} {
+      allow read: if isAdmin();
+      allow create: if canCreate(isAdmin(), id);
+      allow update: if canUpdate(isAdmin());
+    }
+
+    // ---------- bitácora: se agrega, nunca se edita ----------
+    match /audit/{id} {
+      allow read: if isAdmin();
+      allow create: if canCreate(staff(), id) && mine('user') && nowish('fecha');
+    }
+  }
+}

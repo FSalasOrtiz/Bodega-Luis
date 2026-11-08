@@ -28,7 +28,7 @@ export const emptyState = (): State => ({
 /** Catálogo real de LMA (reunión 2). */
 export function addCatalog(S: State): void {
   const addP = (sku: string, nombre: string, familia: string, calibre: string, unidad: 'gamela' | 'kg', precio: number, usaGamela: boolean, extra: object = {}) =>
-    S.products.push({ id: uid('p'), sku, nombre, familia, calibre, unidad, precio, pesoCaja: 0, usaGamela, activo: true, ...extra });
+    S.products.push({ id: uid('p'), sku, nombre, familia, calibre, unidad, precio, pesoCaja: 0, usaGamela, activo: true, pos: S.products.length, ...extra });
   // tomate: se vende por gamela
   addP('TOM-C9', 'Tomate calibre 9', 'Tomate', '9', 'gamela', 20000, true);
   addP('TOM-C85', 'Tomate calibre 8½', 'Tomate', '8½', 'gamela', 19000, true);

@@ -1,0 +1,8 @@
+{
+  "projects": {
+    "default": "demo-bodega",
+    "dev": "REEMPLAZAR-con-id-proyecto-desarrollo",
+    "staging": "REEMPLAZAR-con-id-proyecto-preproduccion",
+    "prod": "REEMPLAZAR-con-id-proyecto-produccion"
+  }
+}

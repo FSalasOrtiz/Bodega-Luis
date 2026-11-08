@@ -131,7 +131,7 @@ export function saveProductCmd(pid: string, f: ProductInput): void {
     if (ch.length) audit('Edita producto', p.nombre, ch.map((k) => k + ': ' + p[k as keyof Product]).join(', '), ch.map((k) => k + ': ' + d[k]).join(', '));
     Object.assign(p, d, { precio: pr });
   } else {
-    S.products.push({ id: uid('p'), ...d, precio: pr });
+    S.products.push({ id: uid('p'), ...d, precio: pr, pos: S.products.reduce((m, p) => Math.max(m, p.pos ?? -1), -1) + 1 });
     audit('Crea producto', d.nombre, '', clp(pr));
   }
 }

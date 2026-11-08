@@ -10,7 +10,13 @@
     "typecheck": "tsc -b --pretty",
     "lint": "eslint .",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "dev:emulator": "vite --mode emulator",
+    "build:emulator": "tsc -b && vite build --mode emulator --outDir dist-emulator",
+    "build:demo": "tsc -b && vite build --mode local-demo --outDir dist-e2e",
+    "seed:emulator": "FIRESTORE_EMULATOR_HOST=127.0.0.1:8080 FIREBASE_AUTH_EMULATOR_HOST=127.0.0.1:9099 tsx scripts/seed-firebase.ts --project demo-bodega",
+    "test:rules": "vitest run --config vitest.rules.config.ts",
+    "reset:emulator": "curl -s -X DELETE 'http://127.0.0.1:8080/emulator/v1/projects/demo-bodega/databases/(default)/documents' >/dev/null && curl -s -X DELETE 'http://127.0.0.1:9099/emulator/v1/projects/demo-bodega/accounts' >/dev/null && npm run seed:emulator -- --demo"
   },
   "dependencies": {
     "firebase": "^13.2.0",
@@ -20,14 +26,17 @@
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
+    "@firebase/rules-unit-testing": "^6.0.0",
     "@types/node": "^24.19.2",
     "@types/react": "^19.3.0",
     "@types/react-dom": "^19.3.0",
     "@vitejs/plugin-react": "^6.2.1",
     "eslint": "^10.14.0",
     "eslint-plugin-react-hooks": "^7.1.1",
+    "firebase-admin": "^14.5.0",
     "globals": "^17.14.0",
     "jsdom": "^31.0.0",
+    "tsx": "^4.23.15",
     "typescript": "5.9",
     "typescript-eslint": "^8.72.1",
     "vite": "^8.3.6",
