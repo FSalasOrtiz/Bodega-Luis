@@ -4,9 +4,11 @@ import './styles/app.css';
 import { App } from './app/App';
 import { bootstrap } from './app/bootstrap';
 import { store } from './state/store';
+import { installTableLabels } from './utils/tableLabels';
 
 const root = createRoot(document.getElementById('root')!);
 root.render(<StrictMode><App /></StrictMode>);
+installTableLabels();
 if (import.meta.env.VITE_E2E === 'true') void import('./app/testBridge').then((m) => m.installTestBridge());
 bootstrap().catch((e) => {
   console.error(e);

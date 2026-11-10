@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { Icon, Logo } from '../../components/icons';
-import { Head } from '../../components/ui';
+import { Head, ItemList, paginate, Pager } from '../../components/ui';
 import { closeModal, openModal } from '../../components/modal';
 import { toast } from '../../components/toast';
 import { P, PR } from '../../domain/catalog';
@@ -17,15 +17,17 @@ import { openRecDoc } from '../reception/Reception';
 export function Producers() {
   useApp();
   const S = ctx.S;
-  const [sel, setSel] = useState(''), [desde, setDesde] = useState(''), [hasta, setHasta] = useState('');
+  const [sel, setSel] = useState(''), [desde, setDesde] = useState(''), [hasta, setHasta] = useState(''), [page, setPage] = useState(1), [q, setQ] = useState('');
   const prod = S.producers.some((p) => p.id === sel) ? sel : S.producers[0]?.id || '';
   const pick = (id: string) => { setSel(id); setDesde(''); setHasta(''); };
+  const needle = q.trim().toLowerCase(), pg = paginate(S.producers.filter((p) => !needle || p.nombre.toLowerCase().includes(needle) || (p.rut || '').includes(needle)).sort((a, b) => a.nombre.localeCompare(b.nombre, 'es')), page);
   return (
     <>
       <Head t="Productores" acts={<button className="btn pri" onClick={() => openProducerForm('', pick)}><Icon n="plus" s={18} />Nuevo productor</button>} />
       <div className="grid g3 stack">
         <div className="card"><h3>Productores y proveedores</h3>
-          <div className="rows">{S.producers.slice().sort((a, b) => a.nombre.localeCompare(b.nombre, 'es')).map((p) => {
+          <input className="in" style={{ marginBottom: 8 }} placeholder="Buscar nombre o RUT" aria-label="Buscar productor" value={q} onChange={(e) => { setQ(e.target.value); setPage(1); }} />
+          <div className="rows">{pg.rows.map((p) => {
             const d = producerAccount(p.id).debe;
             return (
               <div key={p.id} className={`click ${prod === p.id ? 'row-sel' : ''}`} role="button" tabIndex={0} aria-label={`Ver ficha de ${p.nombre}`} aria-pressed={prod === p.id} onClick={() => pick(p.id)} onKeyDown={(e) => { if (e.key === 'Enter') pick(p.id); }}>
@@ -33,20 +35,24 @@ export function Producers() {
                 {d > 0 && <b className="num" style={{ color: 'var(--warn)' }}>Le debes {clp(d)}</b>}
               </div>
             );
-          })}{!S.producers.length && <div className="empty">Aún no hay productores</div>}</div>
+          })}{!pg.total && <div className="empty">{S.producers.length ? 'Sin resultados' : 'Aún no hay productores'}</div>}</div>
+          <Pager pg={pg} onPage={setPage} label="Páginas de productores" />
         </div>
-        <div className="card span2">{prod ? <ProducerSheet id={prod} desde={desde} hasta={hasta} setDesde={setDesde} setHasta={setHasta} /> : <div className="empty">Crea un productor para empezar</div>}</div>
+        <div className="card span2">{prod ? <ProducerSheet key={prod} id={prod} desde={desde} hasta={hasta} setDesde={setDesde} setHasta={setHasta} /> : <div className="empty">Crea un productor para empezar</div>}</div>
       </div>
     </>
   );
 }
 
 function ProducerSheet({ id, desde, hasta, setDesde, setHasta }: { id: string; desde: string; hasta: string; setDesde: (v: string) => void; setHasta: (v: string) => void }) {
+  const [recPage, setRecPage] = useState(1), [liqPage, setLiqPage] = useState(1), [tab, setTab] = useState<'rec' | 'cons' | 'liq'>('rec');
   const S = ctx.S, pr = PR(id) as { nombre: string; rut?: string; fono?: string };
   const recs = S.receptions.filter((r) => r.productor === id).sort((a, b) => b.fecha - a.fecha);
   const compra = recs.filter((r) => !r.anulada && r.modalidad === 'compra').reduce((a, r) => a + r.lineas.reduce((n, l) => n + l.qty * l.costo, 0), 0);
   const consig = recs.some((r) => r.modalidad === 'consignación') || S.lots.some((l) => l.productor === id && lotSrc(l) === 'consig');
   const L = consig ? liqCalc(id, desde, hasta) : null, liqs = S.liqs.filter((l) => l.prod === id).slice().reverse(), A = consig ? producerAccount(id) : null;
+  const recPg = paginate(recs, recPage), liqPg = paginate(liqs, liqPage);
+  const tabs: ['rec' | 'cons' | 'liq', string][] = [['rec', `Recepciones (${recs.length})`], ...(consig ? [['cons', 'Consignación'] as ['cons', string]] : []), ['liq', `Liquidaciones (${liqs.length})`]];
   const gen = async () => { const lid = await exec(() => saveLiqCmd(id, desde, hasta)); if (lid) openLiqDoc(lid); };
   return (
     <>
@@ -59,15 +65,18 @@ function ProducerSheet({ id, desde, hasta, setDesde, setHasta }: { id: string; d
         <div className="card kpi" style={{ background: 'var(--panel)' }}><div className="lbl">Compras directas</div><div className="val num" style={{ fontSize: 24 }}>{clp(compra)}</div></div>
         <div className="card kpi" style={{ background: 'var(--panel)' }}><div className="lbl">Última entrega</div><div className="val num" style={{ fontSize: 20 }}>{recs[0] ? fdate(recs[0].fecha) : '—'}</div></div>
       </div>
-      <h4 style={{ margin: '6px 0' }}>Historial de recepciones</h4>
-      <div className="scroll"><table className="tbl"><thead><tr><th>Fecha</th><th>Modalidad</th><th>Productos</th><th className="right">Total compra</th><th></th></tr></thead>
-        <tbody>{recs.map((r) => (
-          <tr key={r.id}><td>{fdt(r.fecha)}</td><td>{r.modalidad === 'compra' ? 'Compra directa' : 'Consignación'}{r.anulada && <> <span className="pill bad">Anulada</span></>}</td>
-            <td>{r.lineas.map((l) => (l.nombre || P(l.prod).nombre) + ' × ' + qtyFmt(l.qty, l.unidad || P(l.prod).unidad) + (l.gamelas ? ` (${l.gamelas} gam.)` : '')).concat(r.gamelas ? ['Gamelas × ' + r.gamelas] : []).join(', ')}</td>
+      <div className="card-tabs" role="group" aria-label="Secciones de la ficha">{tabs.map(([k, t]) => <button key={k} type="button" className={`btn sm ${tab === k ? 'pri' : 'ghost'}`} aria-pressed={tab === k} onClick={() => setTab(k)}>{t}</button>)}</div>
+      {tab === 'rec' && <>
+      <div className="scroll"><table className="tbl m-cards"><thead><tr><th>Fecha</th><th>Modalidad</th><th>Productos</th><th className="right">Total compra</th><th></th></tr></thead>
+        <tbody>{recPg.rows.map((r) => (
+          <tr key={r.id}><td className="when">{fdt(r.fecha)}</td><td>{r.modalidad === 'compra' ? 'Compra directa' : 'Consignación'}{r.anulada && <> <span className="pill bad">Anulada</span></>}</td>
+            <td><ItemList items={r.lineas.map((l) => (l.nombre || P(l.prod).nombre) + ' × ' + qtyFmt(l.qty, l.unidad || P(l.prod).unidad) + (l.gamelas ? ` (${l.gamelas} gam.)` : '')).concat(r.gamelas ? ['Gamelas × ' + r.gamelas] : [])} /></td>
             <td className="right num">{r.modalidad === 'compra' ? clp(r.lineas.reduce((n, l) => n + l.qty * l.costo, 0)) : '—'}</td><td><button className="btn sm ghost" onClick={() => openRecDoc(r.id)}>Ver</button></td></tr>
         ))}{!recs.length && <tr><td colSpan={5} className="empty">Sin recepciones</td></tr>}</tbody></table></div>
-      {A && <>
-        <h4 style={{ margin: '18px 0 6px' }}>Cuenta de consignación</h4>
+      <Pager pg={recPg} onPage={setRecPage} label="Páginas de recepciones del productor" />
+      </>}
+      {tab === 'cons' && A && <>
+        <h4 style={{ margin: '0 0 6px' }}>Cuenta de consignación</h4>
         <p className="muted" style={{ margin: '0 0 8px', fontSize: 12 }}>De todo lo vendido de este productor: tu comisión se queda en la bodega y el resto es de él hasta que le pagas.</p>
         <div className="grid g4">
           <div className="card kpi" style={{ background: 'var(--panel)' }}><div className="lbl">Vendido</div><div className="val num" style={{ fontSize: 20 }}>{clp(A.vendido)}</div></div>
@@ -76,7 +85,7 @@ function ProducerSheet({ id, desde, hasta, setDesde, setHasta }: { id: string; d
           <div className="card kpi hero"><div className="lbl">Le debes</div><div className="val num" style={{ fontSize: 20 }}>{clp(Math.max(0, A.debe))}</div></div>
         </div>
       </>}
-      {L && <>
+      {tab === 'cons' && L && <>
         <h4 style={{ margin: '18px 0 6px' }}>Liquidación de consignación</h4>
         <p className="muted" style={{ margin: '0 0 8px', fontSize: 12 }}>Neto = vendido − comisión. La merma no se paga.</p>
         <div className="row" style={{ flexWrap: 'wrap' }}>
@@ -93,14 +102,14 @@ function ProducerSheet({ id, desde, hasta, setDesde, setHasta }: { id: string; d
         </div>
         <div className="acts"><button className="btn pri" disabled={!L.monto} onClick={() => void gen()}>Generar liquidación</button></div>
       </>}
-      {liqs.length > 0 && <>
-        <h4 style={{ margin: '18px 0 6px' }}>Liquidaciones emitidas</h4>
-        <div className="scroll"><table className="tbl"><thead><tr><th>Fecha</th><th>Periodo</th><th className="right">Neto</th><th>Estado</th><th></th></tr></thead>
-          <tbody>{liqs.map((l) => (
-            <tr key={l.id}><td>{fdate(l.fecha)}</td><td className="muted">{l.desde || 'inicio'} a {l.hasta || 'hoy'}</td><td className="right num"><b>{clp(l.neto)}</b></td>
+      {tab === 'liq' && <>
+        <div className="scroll"><table className="tbl m-cards"><thead><tr><th>Fecha</th><th>Periodo</th><th className="right">Neto</th><th>Estado</th><th></th></tr></thead>
+          <tbody>{liqPg.rows.map((l) => (
+            <tr key={l.id}><td className="when">{fdate(l.fecha)}</td><td className="muted">{l.desde || 'inicio'} a {l.hasta || 'hoy'}</td><td className="right num"><b>{clp(l.neto)}</b></td>
               <td>{l.neto <= 0 ? <span className="pill warn">Ajuste a compensar</span> : l.pagada ? <span className="pill ok">Pagada {fdate(l.pagada)} · {l.medio}</span> : <button className="btn sm" onClick={() => openPayLiq(l.id)}>Marcar pagada</button>}</td>
               <td><button className="btn sm ghost" onClick={() => openLiqDoc(l.id)}>PDF</button></td></tr>
-          ))}</tbody></table></div>
+          ))}{!liqs.length && <tr><td colSpan={5} className="empty">Aún no hay liquidaciones</td></tr>}</tbody></table></div>
+        <Pager pg={liqPg} onPage={setLiqPage} label="Páginas de liquidaciones" />
       </>}
     </>
   );

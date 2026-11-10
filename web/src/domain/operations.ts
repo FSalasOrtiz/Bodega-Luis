@@ -12,7 +12,7 @@ import { liqCalc } from './producers';
 import { receiptPayment } from './receipts';
 import { expireOpenRequests } from './requests';
 import { activeFinancialSale, refundCashier } from './sales';
-import { incomeOf } from './balance';
+import { incomeOf, shortagePending, shortageRecoveries } from './balance';
 import { revenueEntries } from './sales';
 import { lotStock, lotSrc, prodLots, prodStock, SRC_LBL, srcLots, srcStock } from './stock';
 import { needsFiscalReconciliation, workflowAdmin, workflowTransaction, workflowUser } from './workflow';
@@ -173,6 +173,7 @@ export function closeShiftCmd(openingRaw: string, declaredRaw: string) {
     const net = (method: string) => mine.reduce((n, s) => n + s.pagos.filter((p) => p.medio === method).reduce((a, p) => a + p.monto, 0), 0) - refunds.filter((r) => r.medio === method).reduce((n, r) => n + r.amount, 0) + abonos.filter((a) => a.medio === method).reduce((n, a) => n + a.monto, 0);
     const esperado = opening + net('efectivo');
     if (esperado < 0) throw new Error('Las salidas superan los ingresos: registra el efectivo inicial con que se financiaron las devoluciones.');
+    if (dec > esperado) throw new Error('El efectivo contado no puede ser mayor al esperado según las ventas (' + clp(esperado) + ').');
     const c = { id: uid('k'), vendedor: u.id, turno: u.turno, fecha: now(), apertura: opening, netoEfectivo: net('efectivo'), esperado, declarado: dec, transf: net('transferencia'), tarjeta: net('tarjeta'), cheques: net('cheque'), fiado: net('credito'),
       abonosTotal: abonos.reduce((n, a) => n + a.monto, 0), abonos: abonos.map((a) => a.id), diferencia: dec - esperado, ...shiftSplit(mine), aprobado: '', ventas: mine.map((s) => s.id), devoluciones: refunds.map((r) => r.id),
       documentosPendientes: mine.filter(needsFiscalReconciliation).map((s) => s.id), registrado: u.rol === 'admin' ? true : undefined };
@@ -189,6 +190,22 @@ export function approveCloseCmd(id: string): void {
   if (!c || c.aprobado || c.registrado) return;
   c.aprobado = me()!.id;
   audit('Aprueba cierre', 'Cierre ' + U(c.vendedor).nombre, 'pendiente', 'aprobado (dif. ' + clp(c.diferencia) + ')');
+}
+/** El administrador autoriza una recuperación (total o parcial) del faltante de un cierre; se pueden autorizar varias hasta completar el faltante. Cada una se suma en el Balance del mes en que se autoriza. */
+export function recoverShortageCmd(id: string, montoRaw: string): true {
+  requireAdmin('Solo Luis autoriza la recuperación de un faltante.');
+  const c = ctx.S.closures.find((x) => x.id === id);
+  if (!c) throw new Error('No se encontró el cierre.');
+  if (c.diferencia >= 0) throw new Error('Este cierre no tiene faltante.');
+  const restante = shortagePending(c), monto = Number(montoRaw);
+  if (!restante) throw new Error('El faltante de este cierre ya se recuperó completo.');
+  if (montoRaw === '' || !Number.isSafeInteger(monto) || monto <= 0) throw new Error('Ingresa un monto recuperado válido.');
+  if (monto > restante) throw new Error('El monto no puede superar lo que falta por recuperar: ' + clp(restante) + '.');
+  const r = { monto, por: me()!.id, en: now() };
+  c.recuperaciones = [...shortageRecoveries(c), r];
+  c.recuperado = (c.recuperado || 0) + monto; c.recuperadoPor = r.por; c.recuperadoEn = r.en;
+  audit('Autoriza recuperación de faltante', 'Cierre ' + U(c.vendedor).nombre, 'por recuperar ' + clp(restante), 'recuperado ' + clp(monto) + ' · queda ' + clp(restante - monto));
+  return true;
 }
 
 /* ---------- productores y liquidaciones ---------- */

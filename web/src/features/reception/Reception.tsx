@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { Icon } from '../../components/icons';
-import { Head, paginate, Pager, Seg } from '../../components/ui';
+import { Head, ItemList, paginate, Pager, Seg } from '../../components/ui';
 import { closeModal, openModal } from '../../components/modal';
 import { kgGam, P, PR, recProducts, U } from '../../domain/catalog';
 import { ctx, isAdmin, me } from '../../domain/ctx';
@@ -99,10 +99,10 @@ export function ReceptionHistory() {
   const all = ctx.S.receptions.filter((r) => isAdmin() || r.user === me()!.id).slice().sort((a, b) => b.fecha - a.fecha), pg = paginate(all, page);
   return (
     <div className="card" style={{ marginTop: 14 }}><h3>Historial de recepciones</h3>
-      <div className="scroll"><table className="tbl"><thead><tr><th>Fecha</th><th>Productor / proveedor</th><th>Modalidad</th><th>Productos</th><th>Estado</th><th></th></tr></thead>
+      <div className="scroll"><table className="tbl m-cards"><thead><tr><th>Fecha</th><th>Productor / proveedor</th><th>Modalidad</th><th>Productos</th><th>Estado</th><th></th></tr></thead>
         <tbody>{pg.rows.map((r) => (
-          <tr key={r.id}><td>{fdt(r.fecha)}</td><td>{(r.proveedor || PR(r.productor)).nombre}</td><td>{r.modalidad === 'compra' ? 'Compra directa' : 'Consignación'}</td>
-            <td>{r.lineas.map((l) => (l.nombre || P(l.prod).nombre) + ' × ' + qtyFmt(l.qty, l.unidad || P(l.prod).unidad) + (l.gamelas ? ` (${l.gamelas} gam.)` : '')).concat(r.gamelas ? ['Gamelas × ' + r.gamelas] : []).join(', ')}</td>
+          <tr key={r.id}><td className="when">{fdt(r.fecha)}</td><td>{(r.proveedor || PR(r.productor)).nombre}</td><td>{r.modalidad === 'compra' ? 'Compra directa' : 'Consignación'}</td>
+            <td><ItemList items={r.lineas.map((l) => (l.nombre || P(l.prod).nombre) + ' × ' + qtyFmt(l.qty, l.unidad || P(l.prod).unidad) + (l.gamelas ? ` (${l.gamelas} gam.)` : '')).concat(r.gamelas ? ['Gamelas × ' + r.gamelas] : [])} /></td>
             <td>{r.anulada ? 'Anulada' : 'Registrada'}</td><td><button className="btn ghost sm" onClick={() => openRecDoc(r.id)}>Ver comprobante</button></td></tr>
         ))}{!pg.rows.length && <tr><td colSpan={6} className="empty">Sin recepciones</td></tr>}</tbody></table></div>
       {all.length > 0 && <p className="muted" style={{ margin: '10px 0 0' }}>Mostrando {pg.from}–{pg.to} de {all.length} recepciones.</p>}

@@ -1,4 +1,4 @@
-import type { ReactNode } from 'react';
+import { useState, type ReactNode } from 'react';
 import { Icon } from './icons';
 
 /** Encabezado de módulo: solo el título (sin descripción), por pedido de Felipe. */
@@ -11,25 +11,30 @@ export function Head({ t, acts }: { t: string; acts?: ReactNode }) {
   );
 }
 
-/* Paginación numerada (estilo Google): 20 por página, ventana de hasta 10 números. */
-export const PAGE_SIZE = 20;
+/* Paginación numerada (estilo Google): 5 por página para que cada tarjeta quede liviana; las tablas principales a todo el ancho (ventas y movimientos) usan PAGE_LONG. Ventana de hasta 5 números para que quepa en una línea aun en columnas angostas. */
+export const PAGE_SIZE = 5;
+export const PAGE_SHORT = 5;
+export const PAGE_LONG = 10;
 export interface Page<T> { rows: T[]; p: number; n: number; from: number; to: number; total: number }
-export function paginate<T>(rows: T[], page: number): Page<T> {
-  const n = Math.max(1, Math.ceil(rows.length / PAGE_SIZE)), p = Math.min(Math.max(1, page || 1), n);
-  return { rows: rows.slice((p - 1) * PAGE_SIZE, p * PAGE_SIZE), p, n, from: rows.length ? (p - 1) * PAGE_SIZE + 1 : 0, to: Math.min(p * PAGE_SIZE, rows.length), total: rows.length };
+export function paginate<T>(rows: T[], page: number, size = PAGE_SIZE): Page<T> {
+  const n = Math.max(1, Math.ceil(rows.length / size)), p = Math.min(Math.max(1, page || 1), n);
+  return { rows: rows.slice((p - 1) * size, p * size), p, n, from: rows.length ? (p - 1) * size + 1 : 0, to: Math.min(p * size, rows.length), total: rows.length };
 }
-export function Pager({ pg, onPage, label = 'Paginación' }: { pg: Page<unknown>; onPage: (p: number) => void; label?: string }) {
+/** `inline`: para listas dentro de una tarjeta que es un atajo (Dashboard): no desplaza la página ni activa el atajo de la tarjeta. */
+export function Pager({ pg, onPage, label = 'Paginación', inline = false }: { pg: Page<unknown>; onPage: (p: number) => void; label?: string; inline?: boolean }) {
   if (pg.n < 2) return null;
-  const { p, n } = pg, start = Math.max(1, Math.min(p - 5, n - 9)), end = Math.min(n, start + 9);
-  const go = (i: number, el: HTMLElement) => { onPage(i); requestAnimationFrame(() => el.closest('.card')?.scrollIntoView({ block: 'start' })); };
+  const { p, n } = pg, start = Math.max(1, Math.min(p - 2, n - 4)), end = Math.min(n, start + 4);
+  const go = (i: number, el: HTMLElement) => { onPage(i); if (!inline) requestAnimationFrame(() => el.closest('.card')?.scrollIntoView({ block: 'start' })); };
   const B = ({ i, t, aria }: { i: number; t: ReactNode; aria?: string }) => (
     <button className={`btn sm ${i === p && !aria ? 'pri' : 'ghost'}`} aria-current={i === p && !aria ? 'page' : undefined} aria-label={aria || 'Página ' + i} onClick={(e) => go(i, e.currentTarget)}>{t}</button>
   );
   const nums = [];
   for (let i = start; i <= end; i++) nums.push(<B key={i} i={i} t={i} />);
+  // en celular solo se ven Anterior · «3 de 96» · Siguiente (ver .pager-info en app.css)
   return (
-    <nav className="pager" aria-label={label}>
+    <nav className="pager" aria-label={label} onClick={inline ? (e) => e.stopPropagation() : undefined} onKeyDown={inline ? (e) => e.stopPropagation() : undefined}>
       {p > 1 && <B i={p - 1} t="‹ Anterior" aria="Página anterior" />}
+      <span className="pager-info" aria-hidden="true">{p} de {n}</span>
       {start > 1 && <><B i={1} t={1} />{start > 2 && <span className="gap" aria-hidden="true">…</span>}</>}
       {nums}
       {end < n && <>{end < n - 1 && <span className="gap" aria-hidden="true">…</span>}<B i={n} t={n} /></>}
@@ -81,4 +86,15 @@ export function clickable(onActivate: () => void, label?: string) {
     },
     onKeyUp: (e: React.KeyboardEvent) => { if (e.target === e.currentTarget && e.key === ' ') onActivate(); },
   };
+}
+
+/** Lista de productos resumida: muestra los primeros y un botón "+N más" que despliega el resto (por ejemplo, una recepción con 12 calibres). */
+export function ItemList({ items, max = 2 }: { items: string[]; max?: number }) {
+  const [open, setOpen] = useState(false);
+  if (items.length <= max + 1) return <>{items.join(', ')}</>;
+  return (
+    <span className="item-list">{(open ? items : items.slice(0, max)).join(', ')}{' '}
+      <button type="button" className="more-link" aria-expanded={open} onClick={(e) => { e.stopPropagation(); setOpen(!open); }}>{open ? 'ver menos' : `+${items.length - max} más`}</button>
+    </span>
+  );
 }

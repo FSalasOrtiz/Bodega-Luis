@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { Icon } from '../../components/icons';
-import { Head } from '../../components/ui';
+import { Head, paginate, Pager } from '../../components/ui';
 import { closeModal, openModal } from '../../components/modal';
 import { toast } from '../../components/toast';
 import { U } from '../../domain/catalog';
@@ -20,21 +20,23 @@ export function Users() {
   const [cfg, setCfg] = useState({ nombre: c.nombre, rut: c.rut, giro: c.giro || '', direccion: c.direccion || '', comuna: c.comuna || '', telefonoEmisor: c.telefonoEmisor || '' });
   const set = (p: Partial<typeof cfg>) => setCfg((x) => ({ ...x, ...p }));
   const rev = revenueEntries();
+  const [page, setPage] = useState(1), pg = paginate(S.users, page);
   return (
     <>
       <Head t="Usuarios y ajustes" acts={<button className="btn pri" onClick={() => openEditUser('')}><Icon n="plus" s={18} />Nuevo usuario</button>} />
       <div className="grid g3 stack">
         <div className="card span2"><h3>Usuarios</h3>
-          <div className="scroll"><table className="tbl"><thead><tr><th>Nombre</th><th>Usuario</th><th>Rol</th><th>Turno</th><th className="right">Ventas hoy</th><th className="right">Ventas mes</th><th>Estado</th><th></th></tr></thead>
-            <tbody>{S.users.map((u) => {
+          <div className="scroll"><table className="tbl m-cards"><thead><tr><th>Nombre</th><th>Rol</th><th>Turno</th><th className="right">Ventas hoy</th><th className="right">Ventas mes</th><th>Estado</th><th></th></tr></thead>
+            <tbody>{pg.rows.map((u) => {
               const s = rev.filter((x) => x.vendedor === u.id);
               return (
-                <tr key={u.id}><td><b>{u.nombre}</b></td><td className="muted">{u.usuario}</td><td>{ROLE_LABEL[u.rol] || 'Vendedor'}</td><td>{u.turno}</td>
+                <tr key={u.id}><td className="nowrap"><b>{u.nombre}</b><br /><small className="muted">{u.usuario}</small></td><td>{(ROLE_LABEL[u.rol] || 'Vendedor').split(' · ')[0]}</td><td>{u.turno}</td>
                   <td className="right num">{clp(s.filter((x) => dayKey(x.fecha) === k).reduce((a, x) => a + x.total, 0))}</td>
                   <td className="right num">{clp(s.filter((x) => dayKey(x.fecha).slice(0, 7) === k.slice(0, 7)).reduce((a, x) => a + x.total, 0))}</td>
                   <td>{u.activo ? <span className="pill ok">Activo</span> : <span className="pill mute">Inactivo</span>}</td><td><button className="btn sm ghost" onClick={() => openEditUser(u.id)}>Editar</button></td></tr>
               );
             })}</tbody></table></div>
+          <Pager pg={pg} onPage={setPage} label="Páginas de usuarios" />
         </div>
         <div className="card"><h3>Ajustes de la bodega</h3>
           <div className="f"><label htmlFor="s_n">Nombre comercial</label><input id="s_n" className="in" value={cfg.nombre} onChange={(e) => set({ nombre: e.target.value })} /></div>

@@ -125,8 +125,8 @@ service cloud.firestore {
     match /closures/{id} {
       allow read: if isAdmin() || (isSeller() && resource.data.vendedor == request.auth.uid);
       allow create: if canCreate(staff(), id) && mine('vendedor') && nowish('fecha') && data().aprobado == '';
-      // solo Luis aprueba
-      allow update: if canUpdate(isAdmin()) && onlyChanged(['aprobado']);
+      // solo Luis aprueba y autoriza la recuperación de un faltante
+      allow update: if canUpdate(isAdmin()) && onlyChanged(['aprobado', 'recuperado', 'recuperadoPor', 'recuperadoEn', 'recuperaciones']);
     }
 
     // ---------- créditos ----------

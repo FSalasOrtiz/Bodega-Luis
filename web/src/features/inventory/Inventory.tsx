@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { Icon } from '../../components/icons';
-import { Head } from '../../components/ui';
+import { Head, PAGE_LONG, paginate, Pager } from '../../components/ui';
 import { closeModal, openModal } from '../../components/modal';
 import { kgGam, P, PR, productFamilies, U } from '../../domain/catalog';
 import { ctx, isAdmin } from '../../domain/ctx';
@@ -16,24 +16,24 @@ import { intent } from '../../app/intent';
 
 export function Inventory() {
   useApp();
-  const [q, setQ] = useState(''), [fam, setFam] = useState(() => { const f = intent.invFam || 'Todas'; intent.invFam = undefined; return f; });
-  const admin = isAdmin(), ps = filteredProducts(q, fam, admin), k = today();
+  const [q, setQ] = useState(''), [fam, setFam] = useState(() => { const f = intent.invFam || 'Todas'; intent.invFam = undefined; return f; }), [page, setPage] = useState(1);
+  const admin = isAdmin(), ps = filteredProducts(q, fam, admin), k = today(), pg = paginate(ps, page, PAGE_LONG);
   return (
     <>
       <Head t="Inventario" acts={admin && <><button className="btn ghost" onClick={openNewFamily}><Icon n="plus" s={18} />Nueva familia</button><button className="btn pri" onClick={() => openEditProduct('')}><Icon n="plus" s={18} />Nuevo producto</button></>} />
       <div className="card">
         <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center', justifyContent: 'space-between' }}>
-          <div className="tabs">{['Todas', ...productFamilies()].map((f) => <button key={f} className={`btn sm ${fam === f ? 'pri' : 'ghost'}`} aria-pressed={fam === f} onClick={() => setFam(f)}>{f}</button>)}</div>
-          <input className="in" style={{ maxWidth: 280, marginBottom: 14 }} placeholder="Buscar nombre o SKU" aria-label="Buscar nombre o SKU" value={q} onChange={(e) => setQ(e.target.value)} />
+          <div className="tabs">{['Todas', ...productFamilies()].map((f) => <button key={f} className={`btn sm ${fam === f ? 'pri' : 'ghost'}`} aria-pressed={fam === f} onClick={() => { setFam(f); setPage(1); }}>{f}</button>)}</div>
+          <input className="in" style={{ maxWidth: 280, marginBottom: 14 }} placeholder="Buscar nombre o SKU" aria-label="Buscar nombre o SKU" value={q} onChange={(e) => { setQ(e.target.value); setPage(1); }} />
         </div>
-        <div className="scroll"><table className="tbl"><thead><tr>{admin && <th>SKU</th>}<th>Producto</th>{admin && <><th>Familia</th><th>Unidad</th></>}<th className="right">Precio</th><th className="right">Consignación</th><th className="right">Compra directa</th><th className="right">Stock total</th>{admin && <><th className="right">Llegó hoy</th><th className="right">Vendido hoy</th><th></th></>}</tr></thead>
-          <tbody>{ps.map((p) => {
+        <div className="scroll"><table className="tbl m-cards"><thead><tr>{admin && <th className="m-hide">SKU</th>}<th>Producto</th>{admin && <><th className="m-hide">Familia</th><th className="m-hide">Unidad</th></>}<th className="right">Precio</th><th className="right m-hide">Consignación</th><th className="right m-hide">Compra directa</th><th className="right">Stock total</th>{admin && <><th className="right m-hide">Llegó hoy</th><th className="right m-hide">Vendido hoy</th><th></th></>}</tr></thead>
+          <tbody>{pg.rows.map((p) => {
             const s = prodStock(p.id), ms = ctx.S.moves.filter((m) => m.prod === p.id && dayKey(m.fecha) === k);
             const sum = (t: string) => Math.abs(ms.filter((m) => m.tipo === t).reduce((a, m) => a + m.qty, 0));
             const open = () => (admin ? openEditProduct(p.id) : openProductSheet(p.id));
             return (
               <tr key={p.id} className="click" tabIndex={0} onClick={open} onKeyDown={(e) => { if (e.key === 'Enter' && e.target === e.currentTarget) open(); }}>
-                {admin && <td className="muted">{p.sku}</td>}
+                {admin && <td className="muted nowrap">{p.sku}</td>}
                 <td><b>{p.nombre}</b>{!p.activo && <> <span className="pill mute">Inactivo</span></>}{kgGam(p) && <><br /><small className="muted">{kgGamTxt(p.id)}</small></>}</td>
                 {admin && <><td>{p.familia === 'Otros' ? 'Sin clasificar' : p.familia}</td><td>{p.unidad}{p.unidad === 'kg' && p.pesoCaja ? ` (caja ${p.pesoCaja} kg)` : ''}</td></>}
                 <td className="right num"><b>{clp(p.precio)}</b>{p.unidad === 'kg' ? '/kg' : ''}</td>
@@ -44,6 +44,7 @@ export function Inventory() {
               </tr>
             );
           })}</tbody></table></div>
+        <Pager pg={pg} onPage={setPage} label="Páginas de productos" />
       </div>
     </>
   );
@@ -51,9 +52,10 @@ export function Inventory() {
 
 export function openProductSheet(pid: string): void { openModal(() => <ProductSheet pid={pid} />, { wide: true }); }
 function ProductSheet({ pid }: { pid: string }) {
+  const [lotPage, setLotPage] = useState(1), [mvPage, setMvPage] = useState(1);
   const p = P(pid), admin = isAdmin();
-  const lots = prodLots(pid).filter((l) => lotStock(l.id) > 0);
-  const mv = ctx.S.moves.filter((m) => m.prod === pid).sort((a, b) => b.fecha - a.fecha).slice(0, 12);
+  const lots = prodLots(pid).filter((l) => lotStock(l.id) > 0), lotPg = paginate(lots, lotPage);
+  const mvPg = paginate(ctx.S.moves.filter((m) => m.prod === pid).sort((a, b) => b.fecha - a.fecha), mvPage);
   return (
     <>
       <p className="muted" style={{ margin: 0 }}>{p.sku} · {p.familia} · calibre/variedad {p.calibre}</p><h2>{p.nombre}</h2>
@@ -63,12 +65,14 @@ function ProductSheet({ pid }: { pid: string }) {
           {!p.envase && <div className="sub">Consignación {qtyFmt(srcStock(pid, 'consig'), p.unidad)} · Compra directa {qtyFmt(srcStock(pid, 'directa'), p.unidad)}</div>}{kgGam(p) && <div className="sub">{kgGamTxt(pid)}</div>}</div>
       </div>
       <h3 style={{ fontSize: 15, margin: '6px 0' }}>Lotes en bodega (se vende primero el más antiguo)</h3>
-      <div className="scroll"><table className="tbl"><thead><tr><th>Ingreso</th><th>Productor</th><th>Stock</th><th className="right">Queda</th><th className="right">Días</th></tr></thead>
-        <tbody>{lots.map((l) => { const d = Math.floor((now() - l.fecha) / DAY); return (
-          <tr key={l.id}><td>{fdate(l.fecha)}</td><td>{PR(l.productor).nombre}</td><td>{p.envase ? l.modalidad : SRC_LBL[lotSrc(l)] + (['consignación', 'compra'].includes(l.modalidad) ? '' : ' · ' + l.modalidad)}</td><td className="right num">{qtyFmt(lotStock(l.id), p.unidad)}</td><td className="right"><span className={`pill ${d >= 4 ? 'bad' : d >= 2 ? 'warn' : 'ok'}`}>{d}</span></td></tr>
+      <div className="scroll"><table className="tbl m-cards"><thead><tr><th>Ingreso</th><th>Productor</th><th>Stock</th><th className="right">Queda</th><th className="right">Días</th></tr></thead>
+        <tbody>{lotPg.rows.map((l) => { const d = Math.floor((now() - l.fecha) / DAY); return (
+          <tr key={l.id}><td className="when">{fdate(l.fecha)}</td><td>{PR(l.productor).nombre}</td><td>{p.envase ? l.modalidad : SRC_LBL[lotSrc(l)] + (['consignación', 'compra'].includes(l.modalidad) ? '' : ' · ' + l.modalidad)}</td><td className="right num">{qtyFmt(lotStock(l.id), p.unidad)}</td><td className="right"><span className={`pill ${d >= 4 ? 'bad' : d >= 2 ? 'warn' : 'ok'}`}>{d}</span></td></tr>
         ); })}{!lots.length && <tr><td colSpan={5} className="muted">Sin stock</td></tr>}</tbody></table></div>
-      {admin && <><h3 style={{ fontSize: 15, margin: '14px 0 6px' }}>Movimientos recientes</h3>
-        <div className="scroll"><table className="tbl"><tbody>{mv.map((m) => <tr key={m.id}><td>{fdt(m.fecha)}</td><td>{m.tipo}</td><td>{U(m.user).nombre}</td><td className="right num" style={{ color: m.qty < 0 ? 'var(--bad)' : 'var(--g700)' }}>{m.qty > 0 ? '+' : ''}{qtyFmt(m.qty, p.unidad)}</td></tr>)}</tbody></table></div></>}
+      <Pager pg={lotPg} onPage={setLotPage} label="Páginas de lotes" />
+      {admin && <><h3 style={{ fontSize: 15, margin: '14px 0 6px' }}>Movimientos</h3>
+        <div className="scroll"><table className="tbl"><tbody>{mvPg.rows.map((m) => <tr key={m.id}><td className="when">{fdt(m.fecha)}</td><td>{m.tipo}</td><td>{U(m.user).nombre}</td><td className="right num" style={{ color: m.qty < 0 ? 'var(--bad)' : 'var(--g700)' }}>{m.qty > 0 ? '+' : ''}{qtyFmt(m.qty, p.unidad)}</td></tr>)}</tbody></table></div>
+        <Pager pg={mvPg} onPage={setMvPage} label="Páginas de movimientos del producto" /></>}
       <div className="acts">{admin && <><button className="btn ghost" onClick={() => openAdjustStock(pid)}>Ajustar stock</button><button className="btn ghost" onClick={() => openEditProduct(pid)}>Editar</button>{!p.envase && <button className="btn" onClick={() => openChangePrice(pid)}>Cambiar precio</button>}</>}<button className="btn pri" onClick={closeModal}>Cerrar</button></div>
     </>
   );

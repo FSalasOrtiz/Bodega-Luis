@@ -1,4 +1,4 @@
-import type { Expense, FixedExpense, RevenueEntry } from '../types/model';
+import type { Closure, Expense, FixedExpense, RevenueEntry } from '../types/model';
 import { lotCommission, P, Popt } from './catalog';
 import { ctx } from './ctx';
 import { dayKey, monthKey } from './format';
@@ -38,6 +38,12 @@ export function incomeOf(entries: RevenueEntry[]): Income {
   return r;
 }
 
+/** Lo que falta por recuperar del faltante de un cierre (0 si no tiene faltante o ya se recuperó completo). */
+export const shortagePending = (c: Closure): number => Math.max(0, -c.diferencia - (c.recuperado || 0));
+/** Recuperaciones de un cierre; los cierres con una sola recuperación antigua (sin lista) se leen igual. */
+export const shortageRecoveries = (c: Closure): { monto: number; por: string; en: number }[] =>
+  c.recuperaciones || (c.recuperado && c.recuperadoEn ? [{ monto: c.recuperado, por: c.recuperadoPor || '', en: c.recuperadoEn }] : []);
+
 export function dayStats(key: string) {
   const ss = revenueEntries().filter((s) => dayKey(s.fecha) === key);
   let gam = 0, kgs = 0;
@@ -56,6 +62,10 @@ export const varFor = (mk: string): Expense[] => ctx.S.expenses.filter((e) => mo
 export interface MonthStats extends Income {
   mk: string; merma: Record<string, number>; compras: number; fijos: FixedExpense[]; vars: Expense[]; gamComp: number; gamCompN: number;
   tFijos: number; tVars: number; egresos: number; bolsillo: number; devolucionesPendientes: number;
+  /** Faltantes de los cierres de caja autorizados del mes y lo ya recuperado de ellos: se descuentan / devuelven al ingreso del mes. */
+  faltantes: number; faltantesN: number; recuperado: number; recuperadoN: number;
+  /** Faltante aún sin recuperar (faltantes − recuperado) y en cuántos cierres. */
+  porRecuperar: number; porRecuperarN: number;
 }
 export function monthStats(mk: string): MonthStats {
   const S = ctx.S;
@@ -66,8 +76,12 @@ export function monthStats(mk: string): MonthStats {
   const fijos = fixedFor(mk), vars = varFor(mk);
   const gamComp = vars.filter((e) => e.cantidad).reduce((a, e) => a + e.monto, 0), gamCompN = vars.filter((e) => e.cantidad).reduce((a, e) => a + (e.cantidad || 0), 0);
   const tFijos = fijos.reduce((a, f) => a + f.monto, 0), tVars = vars.reduce((a, e) => a + e.monto, 0);
-  const egresos = compras + tFijos + tVars;
-  return { ...inc, mk, merma, compras, fijos, vars, gamComp, gamCompN, tFijos, tVars, egresos, bolsillo: inc.ingresos - egresos,
+  // la diferencia de un cierre cuenta recién cuando se autoriza (aprobado por Luis o registrado por él mismo), en el mes del cierre
+  const short = S.closures.filter((c) => c.diferencia < 0 && (c.aprobado || c.registrado) && monthKey(c.fecha) === mk), rec = short.flatMap(shortageRecoveries);
+  const faltantes = short.reduce((a, c) => a - c.diferencia, 0), recuperado = rec.reduce((a, r) => a + r.monto, 0);
+  const ingresos = inc.ingresos - faltantes + recuperado, egresos = compras + tFijos + tVars;
+  return { ...inc, ingresos, mk, merma, compras, fijos, vars, gamComp, gamCompN, tFijos, tVars, egresos, bolsillo: ingresos - egresos,
+    faltantes, faltantesN: short.length, recuperado, recuperadoN: rec.length, porRecuperar: faltantes - recuperado, porRecuperarN: short.filter((c) => shortagePending(c) > 0).length,
     devolucionesPendientes: (S.refunds || []).filter((x) => x.state !== 'confirmada_manual').reduce((n, x) => n + x.amount, 0) };
 }
 export function unitTotals(st: Income): Record<string, { qty: number; unidad: string }> {

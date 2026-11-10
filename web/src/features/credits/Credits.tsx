@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { Icon } from '../../components/icons';
-import { Head } from '../../components/ui';
+import { Head, PAGE_LONG, paginate, Pager } from '../../components/ui';
 import { closeModal, openModal } from '../../components/modal';
 import { toast } from '../../components/toast';
 import { CL, lineName, U } from '../../domain/catalog';
@@ -25,36 +25,39 @@ export function CreditCard() {
 }
 
 function DebtorRows() {
-  const d = debtors();
-  if (!d.length) return <div className="empty">Nadie te debe en este momento.</div>;
-  return <>{d.map((c) => (
+  const [page, setPage] = useState(1);
+  const d = debtors(), pg = paginate(d, page);
+  if (!d.length) return <div className="rows"><div className="empty">Nadie te debe en este momento.</div></div>;
+  return <><div className="rows">{pg.rows.map((c) => (
     <div key={c.id} className="click" role="button" tabIndex={0} onClick={() => openCreditDetail(c.id)} onKeyDown={(e) => { if (e.key === 'Enter' && e.target === e.currentTarget) openCreditDetail(c.id); }}>
       <span className="avatar" style={{ width: 36, height: 36, fontSize: 13 }}>{c.nombre[0]}</span>
       <div className="grow"><b>{c.nombre}</b><span>{creditSales(c.id).length} compras a crédito</span></div>
       <b className="num credit-owed">{clp(c.saldo)}</b>
       <button type="button" className="btn sm pri" onClick={(e) => { e.stopPropagation(); openAbonoForm(c.id); }}>Pagar</button>
     </div>
-  ))}</>;
+  ))}</div><Pager pg={pg} onPage={setPage} label="Páginas de clientes con deuda" /></>;
 }
 
 export function Credits() {
   useApp();
-  const all = liveClients().map((c) => ({ ...c, saldo: creditBalance(c.id) })), aldia = all.filter((c) => c.saldo <= 0).sort((a, b) => a.nombre.localeCompare(b.nombre, 'es'));
+  const [page, setPage] = useState(1);
+  const all = liveClients().map((c) => ({ ...c, saldo: creditBalance(c.id) })), aldia = all.filter((c) => c.saldo <= 0).sort((a, b) => a.nombre.localeCompare(b.nombre, 'es')), pg = paginate(aldia, page, PAGE_LONG);
   return (
     <>
       <Head t="Créditos" acts={isAdmin() && <button className="btn pri" onClick={() => openEditClient('')}><Icon n="plus" s={18} />Nuevo cliente</button>} />
       <div className="grid g3 stack">
         <div className="card kpi hero"><div className="lbl">Total por cobrar</div><div className="val num">{clp(creditTotal())}</div><div className="sub">{debtors().length} clientes con deuda</div></div>
-        <div className="card span2"><h3>Me deben</h3><div className="rows"><DebtorRows /></div></div>
+        <div className="card span2"><h3>Me deben</h3><DebtorRows /></div>
       </div>
       {!isAdmin() && <MyAbonoRequests />}
       <div className="card" style={{ marginTop: 14 }}><h3>Al día</h3>
-        <div className="rows">{aldia.map((c) => (
+        <div className="rows cols2">{pg.rows.map((c) => (
           <div key={c.id} className="click" role="button" tabIndex={0} onClick={() => openCreditDetail(c.id)} onKeyDown={(e) => { if (e.key === 'Enter' && e.target === e.currentTarget) openCreditDetail(c.id); }}>
             <div className="grow"><b>{c.nombre}</b><span>{c.activo === false ? 'Inactivo' : 'Sin deuda'}</span></div><span className="pill ok">Al día</span>
             {isAdmin() && <button className="btn sm ghost" onClick={(e) => { e.stopPropagation(); deleteClient(c.id); }} aria-label={`Borrar a ${c.nombre}`}>🗑️ Borrar</button>}
           </div>
         ))}{!aldia.length && <div className="muted">Todos los clientes tienen saldo pendiente.</div>}</div>
+        <Pager pg={pg} onPage={setPage} label="Páginas de clientes al día" />
       </div>
     </>
   );
@@ -63,35 +66,39 @@ export function Credits() {
 /** El vendedor ve sus pagos esperando a Luis y los que Luis respondió hoy. */
 function MyAbonoRequests() {
   const rs = (ctx.S.abonoRequests || []).filter((r) => r.user === me()!.id && (r.estado === 'pendiente' || (['aprobada', 'rechazada'].includes(r.estado) && dayKey(r.resueltoEn || 0) === today()))).sort((a, b) => b.fecha - a.fecha);
+  const [page, setPage] = useState(1), pg = paginate(rs, page);
   if (!rs.length) return null;
   return (
     <div className="card" style={{ marginTop: 14 }}><h3>Mis pagos de deuda</h3>
-      <div className="rows">{rs.map((r) => (
+      <div className="rows">{pg.rows.map((r) => (
         <div key={r.id} style={{ flexWrap: 'wrap', gap: '8px 12px' }}><div className="grow"><b>{CL(r.cliente).nombre} · {clp(r.monto)}</b><span>{receiptPayment(r.medio)} · {ftime(r.fecha)}</span></div>
           {r.estado === 'pendiente' ? <><span className="pill warn">Esperando a Luis</span><button className="btn sm ghost" onClick={() => void exec(() => cancelAbonoRequestCmd(r.id), 'Solicitud cancelada.')}>Cancelar</button></>
             : r.estado === 'aprobada' ? <span className="pill ok">Autorizado · entra a tu caja</span> : <span className="pill bad">Luis lo rechazó</span>}
         </div>
       ))}</div>
+      <Pager pg={pg} onPage={setPage} label="Páginas de mis pagos de deuda" />
     </div>
   );
 }
 
 export function openCreditDetail(id: string): void { openModal(() => <CreditDetail id={id} />, { wide: true }); }
 function CreditDetail({ id }: { id: string }) {
+  const [page, setPage] = useState(1);
   const c = CL(id), saldo = creditBalance(id), espera = saldo - abonoAvailable(id);
   const cc = c as { rut?: string; fono?: string };
   const mov = [
     ...creditSales(id).map((s) => ({ k: s.id, f: s.fecha, t: `Venta N° ${s.num}: ${s.lineas.map((l) => `${qtyFmt(l.qty, l.unidad)} ${lineName(l)}`).join(', ')}`, cargo: saleCredit(s), abono: 0, u: s.vendedor })),
     ...creditPayments(id).map((a) => ({ k: a.id, f: a.fecha, t: `Pago en ${receiptPayment(a.medio).toLowerCase()}${a.ref ? ' · ' + a.ref : ''}`, cargo: 0, abono: a.monto, u: a.user })),
-  ].sort((a, b) => b.f - a.f);
+  ].sort((a, b) => b.f - a.f), pg = paginate(mov, page);
   return (
     <>
       <p className="muted" style={{ margin: 0 }}>Cuenta de crédito</p><h2>{c.nombre}</h2>{(cc.rut || cc.fono) && <p className="muted">{[cc.rut, cc.fono].filter(Boolean).join(' · ')}</p>}
       <div className="total"><span>Debe</span><span className="num" style={{ color: saldo > 0 ? 'var(--bad)' : 'var(--g700)' }}>{clp(Math.max(0, saldo))}</span></div>
       {espera > 0 && <p><span className="pill warn">Pagos esperando a Luis: {clp(espera)}</span></p>}
-      <div className="scroll"><table className="tbl"><thead><tr><th>Fecha</th><th>Detalle</th><th className="right">Crédito</th><th className="right">Pagó</th></tr></thead>
-        <tbody>{mov.map((m) => <tr key={m.k}><td>{fdt(m.f)}</td><td>{m.t}<br /><small className="muted">{U(m.u).nombre}</small></td><td className="right num">{m.cargo ? clp(m.cargo) : ''}</td><td className="right num" style={{ color: 'var(--g700)' }}>{m.abono ? clp(m.abono) : ''}</td></tr>)}
+      <div className="scroll"><table className="tbl m-cards"><thead><tr><th>Fecha</th><th>Detalle</th><th className="right">Crédito</th><th className="right">Pagó</th></tr></thead>
+        <tbody>{pg.rows.map((m) => <tr key={m.k}><td className="when">{fdt(m.f)}</td><td>{m.t}<br /><small className="muted">{U(m.u).nombre}</small></td><td className="right num">{m.cargo ? clp(m.cargo) : ''}</td><td className="right num" style={{ color: 'var(--g700)' }}>{m.abono ? clp(m.abono) : ''}</td></tr>)}
           {!mov.length && <tr><td colSpan={4} className="empty">Sin movimientos</td></tr>}</tbody></table></div>
+      <Pager pg={pg} onPage={setPage} label="Páginas de movimientos del crédito" />
       <div className="acts">
         {isAdmin() && saldo <= 0 && <button className="btn ghost" style={{ color: 'var(--bad)' }} onClick={() => deleteClient(id)}>🗑️ Borrar cliente</button>}
         {isAdmin() && <button className="btn ghost" onClick={() => openEditClient(id)}>Editar cliente</button>}

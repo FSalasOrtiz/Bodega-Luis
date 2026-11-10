@@ -13,11 +13,12 @@ import { ctx } from '../src/domain/ctx';
 import { setClock, monthKey, dayKey, DAY } from '../src/domain/format';
 import { prodStock, srcStock } from '../src/domain/stock';
 import { dayStats, monthStats } from '../src/domain/balance';
+import type { Closure } from '../src/types/model';
 import { liqCalc, producerAccount } from '../src/domain/producers';
 import { creditBalance, creditTotal } from '../src/domain/credits';
 import { moneyEntries, revenueEntries } from '../src/domain/sales';
 import { registerSaleCommand, reverseSaleCommand, type SaleDraft } from '../src/domain/workflow';
-import { closeShiftCmd, saveMermaCmd, saveReceptionCmd } from '../src/domain/operations';
+import { approveCloseCmd, closeShiftCmd, recoverShortageCmd, saveMermaCmd, saveReceptionCmd } from '../src/domain/operations';
 import { POS_DEFAULT } from '../src/domain/pos';
 
 const ROOT = resolve(__dirname, '../..');
@@ -79,8 +80,14 @@ function derived(S: State, f: { prodStock: (id: string) => number; srcStock: (id
     money: f.money(),
   };
 }
+/** El prototipo no descuenta faltantes de caja en el Balance (cambio posterior a la migración): se comparan los meses sin ese efecto. */
+const monthStatsSinCaja = (k: string) => {
+  const { faltantes, faltantesN: _fn, recuperado, recuperadoN: _rn, ...m } = monthStats(k);
+  const { porRecuperar: _pr, porRecuperarN: _prn, ...rest } = m;
+  return { ...rest, ingresos: m.ingresos + faltantes - recuperado, bolsillo: m.bolsillo + faltantes - recuperado };
+};
 const tsFns = {
-  prodStock: (id: string) => prodStock(id), srcStock: (id: string, s: string) => srcStock(id, s as 'consig'), dayStats, monthStats, liqCalc, producerAccount, creditBalance, creditTotal,
+  prodStock: (id: string) => prodStock(id), srcStock: (id: string, s: string) => srcStock(id, s as 'consig'), dayStats, monthStats: monthStatsSinCaja, liqCalc, producerAccount, creditBalance, creditTotal,
   revenueN: () => revenueEntries().length,
   money: () => moneyEntries().reduce<Record<string, number>>((a, e) => ((a[e.medio] = (a[e.medio] || 0) + e.monto), a), {}),
 };
@@ -171,5 +178,40 @@ describe('Dominio TS ≡ prototipo', () => {
     const keys = ['esperado', 'declarado', 'transf', 'tarjeta', 'fiado', 'diferencia', 'netoEfectivo', 'vendido', 'consig', 'comision', 'deProductores', 'propias', 'gamelas'];
     expect(keys.map((k) => tc[k])).toEqual(keys.map((k) => (pc as unknown as Record<string, unknown>)[k]));
     expect(tc.ventas.length).toBe(pc.ventas.length);
+  });
+
+  it('faltante de caja se descuenta en el Balance y la recuperación autorizada por el admin se suma', () => {
+    const mk = monthKey(clockNow), base = monthStats(mk);
+    const c = { id: 'k-falt', vendedor: 'u2', turno: 'mañana', fecha: clockNow, apertura: 0, netoEfectivo: 20000, esperado: 20000, declarado: 15000, transf: 0, tarjeta: 0, cheques: 0, fiado: 0, abonosTotal: 0, abonos: [], diferencia: -5000, aprobado: '', ventas: [], devoluciones: [] } as Closure;
+    ctx.S.closures.push(c);
+    // sin autorizar el cierre, la diferencia todavía no toca el ingreso
+    expect(monthStats(mk).ingresos).toBe(base.ingresos);
+    asUser('u2');
+    expect(() => recoverShortageCmd(c.id, '3000')).toThrow();
+    asUser(ctx.S.users.find((u) => u.rol === 'admin')!.id);
+    approveCloseCmd(c.id);
+    const a = monthStats(mk);
+    expect(a.faltantes - base.faltantes).toBe(5000);
+    expect(a.ingresos - base.ingresos).toBe(-5000);
+    expect(a.egresos).toBe(base.egresos);
+    expect(a.porRecuperar - base.porRecuperar).toBe(5000);
+    expect(() => recoverShortageCmd(c.id, '6000')).toThrow();
+    expect(() => recoverShortageCmd(c.id, '0')).toThrow();
+    recoverShortageCmd(c.id, '3000');
+    const b = monthStats(mk);
+    expect(b.recuperado - base.recuperado).toBe(3000);
+    expect(b.ingresos - base.ingresos).toBe(-2000);
+    expect(b.porRecuperar - base.porRecuperar).toBe(2000);
+    expect(b.bolsillo - base.bolsillo).toBe(-2000);
+    // se puede seguir recuperando hasta completar el faltante, no más
+    expect(() => recoverShortageCmd(c.id, '2001')).toThrow();
+    recoverShortageCmd(c.id, '1500');
+    recoverShortageCmd(c.id, '500');
+    expect(c.recuperado).toBe(5000);
+    expect(c.recuperaciones).toHaveLength(3);
+    expect(() => recoverShortageCmd(c.id, '1')).toThrow();
+    expect(monthStats(mk).bolsillo - base.bolsillo).toBe(0);
+    expect(monthStats(mk).porRecuperar).toBe(base.porRecuperar);
+    ctx.S.closures = ctx.S.closures.filter((x) => x.id !== c.id);
   });
 });

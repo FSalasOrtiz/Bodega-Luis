@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { Icon } from '../../components/icons';
-import { Head, paginate, Pager } from '../../components/ui';
+import { Head, ItemList, PAGE_LONG, paginate, Pager } from '../../components/ui';
 import { CL, lineName, P, Popt, U } from '../../domain/catalog';
 import { ctx, isAccountant, isAdmin, me } from '../../domain/ctx';
 import { clp, dayKey, fdt, kg, qtyFmt, searchText, today } from '../../domain/format';
@@ -51,7 +51,7 @@ function SalesList({ sf, setSf }: { sf: SalesFilter; setSf: (f: SalesFilter) => 
   const [q, setQ] = useState(''), [page, setPage] = useState(1);
   const set = (k: keyof SalesFilter, v: string) => { setSf({ ...sf, [k]: v }); setPage(1); };
   const inverted = !!(sf.desde && sf.hasta && sf.desde > sf.hasta);
-  const all = inverted ? [] : salesRows(sf, q), pg = paginate(all, page), readOnly = isAccountant(), seeAll = isAdmin() || readOnly;
+  const all = inverted ? [] : salesRows(sf, q), pg = paginate(all, page, PAGE_LONG), readOnly = isAccountant(), seeAll = isAdmin() || readOnly;
   const sum = (kind?: string) => { const r = all.filter((s) => vig(s) && (!kind || receiptKind(s) === kind)); return { n: r.length, total: r.reduce((a, s) => a + s.total, 0), neto: r.reduce((a, s) => a + receiptData(s).neto, 0) }; };
   const tot = sum(), bo = sum('Boleta'), fa = sum('Factura'), withClient = pg.rows.some((s) => receiptKind(s) === 'Factura');
   return (
@@ -73,15 +73,15 @@ function SalesList({ sf, setSf }: { sf: SalesFilter; setSf: (f: SalesFilter) => 
         <div className="card kpi"><div className="lbl">Facturas</div><div className="val num">{clp(fa.total)}</div><div className="sub">{fa.n} · neto {clp(fa.neto)}</div></div>
       </div>
       <div className="card" style={{ marginTop: 14 }}>
-        <div className="scroll"><table className="tbl"><thead><tr><th>N°</th><th>Documento</th><th>Fecha</th>{seeAll && <th>Vendedor</th>}{withClient && <th>Cliente</th>}<th>Productos</th><th>Pago</th><th className="right">Total</th>{!readOnly && <th></th>}</tr></thead>
+        <div className="scroll"><table className="tbl m-cards"><thead><tr><th>N°</th><th className="m-hide">Documento</th><th>Fecha</th>{seeAll && <th>Vendedor</th>}{withClient && <th>Cliente</th>}<th>Productos</th><th>Pago</th><th className="right">Total</th>{!readOnly && <th></th>}</tr></thead>
           <tbody>{pg.rows.map((s) => {
             const rc = receiptData(s).receptor, paid = s.pagos.filter((p) => p.monto);
             return (
               <tr key={s.id} className={`click ${s.pagos.some((p) => p.medio === 'transferencia' && p.monto) ? 'row-tr' : ''}`} tabIndex={0} onClick={() => openReceipt(s.id)} onKeyDown={(e) => { if (e.key === 'Enter' && e.target === e.currentTarget) openReceipt(s.id); }}>
-                <td className="muted">{s.num}</td><td>{receiptKind(s)}{readOnly && s.estado === 'anulada' && <> <span className="pill bad">Anulada</span></>}</td><td>{fdt(s.fecha)}</td>
+                <td className="muted">{s.num}</td><td>{receiptKind(s)}{readOnly && s.estado === 'anulada' && <> <span className="pill bad">Anulada</span></>}</td><td className="when">{fdt(s.fecha)}</td>
                 {seeAll && <td>{U(s.vendedor).nombre}</td>}
                 {withClient && <td>{rc ? <><b>{rc.razonSocial || ''}</b><br /><span className="muted">{rc.rut || ''}</span></> : <span className="muted">—</span>}</td>}
-                <td>{s.lineas.map((l) => lineName(l).replace('Tomate calibre', 'Cal.') + ' ×' + (l.unidad === 'kg' ? kg(l.qty) + 'kg' : l.qty)).join(', ')}</td>
+                <td><ItemList items={s.lineas.map((l) => lineName(l).replace('Tomate calibre', 'Cal.') + ' ×' + (l.unidad === 'kg' ? kg(l.qty) + 'kg' : l.qty))} /></td>
                 <td>{paid.map((p, i) => <span key={i}>{i > 0 && ' + '}{p.medio === 'transferencia' ? <span className="pay-tr">Transferencia{paid.length > 1 ? ' ' + clp(p.monto) : ''}</span> : receiptPayment(p.medio) + (p.medio === 'credito' && s.cliente ? ' · ' + CL(s.cliente).nombre : '')}</span>)}</td>
                 <td className="right num"><b>{clp(s.total)}</b></td>
                 {!readOnly && <td onClick={(e) => e.stopPropagation()}>{s.estado === 'anulada' ? <span className="pill bad">Anulada</span> : isAdmin() ? <button className="btn sm bad" onClick={() => openVoidSale(s.id)}>Anular</button> : s.solicitud ? <span className="pill warn">Anulación pedida</span> : <button className="btn sm ghost" onClick={() => requestVoid(s.id)}>Solicitar anulación</button>}</td>}
@@ -122,7 +122,7 @@ function MovesList() {
   if (user) rows = rows.filter((r) => r.user === user);
   if (q) rows = rows.filter((r) => searchText(r.det + ' ' + r.tipo + ' ' + r.motivo).includes(q));
   rows.sort((a, b) => b.fecha - a.fecha);
-  const pg = paginate(rows, page), pill = (c?: string) => (c === 'Mermas' || c === 'Anulaciones' ? 'bad' : c === 'Ajustes de stock' ? 'warn' : c === 'Autorizaciones' ? 'ok' : 'mute');
+  const pg = paginate(rows, page, PAGE_LONG), pill = (c?: string) => (c === 'Mermas' || c === 'Anulaciones' ? 'bad' : c === 'Ajustes de stock' ? 'warn' : c === 'Autorizaciones' ? 'ok' : 'mute');
   return (
     <div className="card">
       <div className="row" style={{ flexWrap: 'wrap' }}>
@@ -130,8 +130,8 @@ function MovesList() {
         <div className="f"><label htmlFor="mf-user">Usuario</label><select id="mf-user" className="in" value={user} onChange={(e) => { setUser(e.target.value); setPage(1); }}><option value="">Todos</option>{S.users.map((u) => <option key={u.id} value={u.id}>{u.nombre}</option>)}</select></div>
         <div className="f"><label htmlFor="mf-q">Buscar</label><input id="mf-q" className="in" placeholder="Producto, cliente, usuario…" value={mq} onChange={(e) => { setMq(e.target.value); setPage(1); }} /></div>
       </div>
-      <div className="scroll"><table className="tbl"><thead><tr><th>Fecha</th><th>Tipo</th><th>Usuario</th><th>Detalle</th><th className="right">Cantidad</th><th>Antes → Después</th><th>Motivo</th></tr></thead>
-        <tbody>{pg.rows.map((r) => <tr key={r.key}><td>{fdt(r.fecha)}</td><td><span className={`pill ${pill(r.cat)}`}>{r.mov ? r.cat : r.tipo}</span></td><td>{U(r.user).nombre}</td><td>{r.det}</td><td className="right num" style={{ color: r.neg ? 'var(--bad)' : 'var(--g700)' }}>{r.cant}</td><td className="muted">{r.antes || r.despues ? r.antes + ' → ' + r.despues : ''}</td><td className="muted">{r.motivo}</td></tr>)}
+      <div className="scroll"><table className="tbl m-cards"><thead><tr><th>Fecha</th><th>Tipo</th><th>Usuario</th><th>Detalle</th><th className="right">Cantidad</th><th>Antes → Después</th><th>Motivo</th></tr></thead>
+        <tbody>{pg.rows.map((r) => <tr key={r.key}><td className="when">{fdt(r.fecha)}</td><td><span className={`pill ${pill(r.cat)}`}>{r.mov ? r.cat : r.tipo}</span></td><td>{U(r.user).nombre}</td><td>{r.det}</td><td className="right num" style={{ color: r.neg ? 'var(--bad)' : 'var(--g700)' }}>{r.cant}</td><td className="muted">{r.antes || r.despues ? r.antes + ' → ' + r.despues : ''}</td><td className="muted">{r.motivo}</td></tr>)}
           {!pg.rows.length && <tr><td colSpan={7} className="empty">Sin movimientos con estos filtros</td></tr>}</tbody></table></div>
       {rows.length > 0 && <p className="muted" style={{ margin: '10px 0 0' }}>Mostrando {pg.from}–{pg.to} de {rows.length} movimientos. Las ventas y recepciones están en sus pestañas.</p>}
       <Pager pg={pg} onPage={setPage} label="Páginas de movimientos" />

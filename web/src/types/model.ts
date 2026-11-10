@@ -300,6 +300,11 @@ export interface Closure {
   aprobado: string;
   aprobadoEn?: Ms;
   registrado?: boolean;
+  /** Total recuperado del faltante (suma de las recuperaciones); cada una la autoriza el administrador. */
+  recuperado?: number;
+  recuperadoPor?: string;
+  recuperadoEn?: Ms;
+  recuperaciones?: { monto: number; por: string; en: Ms }[];
   ventas: string[];
   devoluciones: string[];
   [split: string]: unknown;

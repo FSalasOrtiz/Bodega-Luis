@@ -1,12 +1,12 @@
 import { useState } from 'react';
 import { Icon, Logo } from '../../components/icons';
-import { Head, Seg } from '../../components/ui';
+import { Head, paginate, Pager, Seg } from '../../components/ui';
 import { closeModal, openModal } from '../../components/modal';
 import { toast } from '../../components/toast';
 import { lineName, P, productFamilies, U } from '../../domain/catalog';
 import { ctx } from '../../domain/ctx';
 import { clp, dayKey, fdate, fdt, MESES, monthKey, monthName, now, pad2, prevMonth, qtyFmt, today } from '../../domain/format';
-import { anulTxt, FIX_CATS, monthStats, unitTotals, VAR_CATS } from '../../domain/balance';
+import { anulTxt, FIX_CATS, monthStats, unitTotals, VAR_CATS, type MonthStats } from '../../domain/balance';
 import { producersOwed } from '../../domain/producers';
 import { canDelVar, delFixedCmd, delVarCmd, endFixedCmd, saveGastoCmd, updFixedCmd, updVarCmd, type GastoInput } from '../../domain/operations';
 import { receiptKind, receiptPayment } from '../../domain/receipts';
@@ -22,15 +22,17 @@ export function Balance() {
   useApp();
   const S = ctx.S;
   const [bm, setBmState] = useState(() => bmCache || monthKey(now()));
-  const setBm = (v: string) => { bmCache = v; setBmState(v); };
-  const b = monthStats(bm), vars = b.vars.slice().sort((a, c) => c.fecha - a.fecha);
+  const [fixPage, setFixPage] = useState(1), [varPage, setVarPage] = useState(1), [soldPage, setSoldPage] = useState(1), [monPage, setMonPage] = useState(1);
+  const setBm = (v: string) => { bmCache = v; setBmState(v); setFixPage(1); setVarPage(1); setSoldPage(1); };
+  const b = monthStats(bm), vars = b.vars.slice().sort((a, c) => c.fecha - a.fecha), fixPg = paginate(b.fijos, fixPage), varPg = paginate(vars, varPage);
   const Row = ({ t, sub, v, neg, edit }: { t: string; sub?: string; v: number; neg?: boolean; edit?: () => void }) => (
     <div><div className="grow"><b>{t}</b>{sub && <span>{sub}</span>}</div><b className="num" style={{ color: neg ? 'var(--bad)' : 'var(--g700)' }}>{neg ? '− ' : '+ '}{clp(Math.abs(v))}</b>{edit && <button className="btn sm ghost" onClick={edit}>Editar</button>}</div>
   );
-  const sold = S.products.filter((p) => b.byProd[p.id] || b.merma[p.id]).map((p) => ({ p, q: b.byProd[p.id]?.qty || 0, m: b.byProd[p.id]?.monto || 0, merma: b.merma[p.id] || 0 })).sort((x, y) => y.m - x.m);
+  const sold = S.products.filter((p) => b.byProd[p.id] || b.merma[p.id]).map((p) => ({ p, q: b.byProd[p.id]?.qty || 0, m: b.byProd[p.id]?.monto || 0, merma: b.merma[p.id] || 0 })).sort((x, y) => y.m - x.m), soldPg = paginate(sold, soldPage);
   const last6 = [...Array(6)].map((_, i) => { let k = monthKey(now()); for (let j = 0; j < i; j++) k = prevMonth(k); return k; });
   const months = [...new Set([...revenueEntries().map((s) => monthKey(s.fecha)), ...S.expenses.map((e) => monthKey(e.fecha)), ...last6])].sort().reverse();
   const ms = months.map(monthStats).filter((m) => m.mk === monthKey(now()) || m.ventas || m.egresos);
+  const monPg = paginate(ms, monPage);
   const fams = [...productFamilies(), ...(S.products.some((p) => !p.envase && p.familia === 'Otros') ? ['Otros'] : [])];
   const owed = producersOwed();
   return (
@@ -39,15 +41,19 @@ export function Balance() {
         <button className="btn pri" onClick={() => openGasto(setBm)}><Icon n="plus" s={18} />Agregar gasto</button></>} />
       <div className="grid g3">
         <div className="card kpi hero"><div className="lbl">Resultado del mes</div><div className="val num" style={{ fontSize: 34 }}>{clp(b.bolsillo)}</div><div className="sub">ingresos − egresos de {monthName(bm)}</div></div>
-        <div className="card kpi"><div className="lbl">Ingresos</div><div className="val num" style={{ fontSize: 30, color: 'var(--g700)' }}>{clp(b.ingresos)}</div><div className="sub">de {clp(b.ventas)} vendidos en {b.n} ventas{anulTxt(b.anul)}</div></div>
+        <div className="card kpi"><div className="lbl">Ingresos</div><div className="val num" style={{ fontSize: 30, color: 'var(--g700)' }}>{clp(b.ingresos)}</div><div className="sub"><IncomeSub b={b} /></div></div>
         <div className="card kpi"><div className="lbl">Egresos</div><div className="val num" style={{ fontSize: 30, color: 'var(--bad)' }}>{clp(b.egresos)}</div><div className="sub" style={{ color: 'var(--muted)' }}>compras {clp(b.compras)} · fijos {clp(b.tFijos)} · variables {clp(b.tVars)}</div></div>
       </div>
+      <ShortageAlert b={b} style={{ marginTop: 14 }} />
       <div className="grid g2 stack" style={{ marginTop: 14 }}>
+        <div className="col-stack">
         <div className="card"><h3>Ingresos</h3>
           <div className="rows">
             <Row t="Venta de mercadería propia" sub="compra directa (palta, otros…)" v={b.propias} />
             <Row t="Comisión de productores" sub={`sobre ${clp(b.consig)} vendidos en consignación`} v={b.comision} />
             <Row t="Gamelas (garantía neta)" sub={`${b.gamCobN} cobradas − ${b.gamDevN} descontadas`} v={b.gamVend} neg={b.gamVend < 0} />
+            {b.faltantes > 0 && <Row t="Diferencias de caja" sub={`faltante de ${b.faltantesN} cierre${b.faltantesN > 1 ? 's' : ''} autorizado${b.faltantesN > 1 ? 's' : ''}`} v={b.faltantes} neg />}
+            {b.recuperado > 0 && <Row t="Diferencias recuperadas" sub={`${b.recuperadoN} recuperación${b.recuperadoN > 1 ? 'es' : ''} (totales o parciales)`} v={b.recuperado} />}
           </div>
           <h4 className="exp-group">Consignación de {monthName(bm)}</h4>
           <div className="rows">
@@ -58,22 +64,26 @@ export function Balance() {
           {owed > 0 && <p className="muted" style={{ fontSize: 12, margin: '10px 0 0' }}>Por pagar a productores hoy (todas las fechas): <b>{clp(owed)}</b> · <button type="button" className="btn sm ghost" onClick={() => go('prod')}>Ver productores</button></p>}
           {b.devolucionesPendientes > 0 && <p className="muted" style={{ fontSize: 12, margin: '6px 0 0' }}>Devoluciones de dinero aún pendientes (todas las fechas): <b>{clp(b.devolucionesPendientes)}</b>.</p>}
         </div>
+      <div className="card"><h3>Lo vendido en {monthName(bm)}<button className="btn sm ghost" onClick={() => openMonthDetail(bm)}><Icon n="print" s={15} />Cierre del mes (PDF)</button></h3>
+          <div className="scroll"><table className="tbl"><thead><tr><th>Producto</th><th className="right">Vendido</th><th className="right">Merma</th><th className="right">Monto</th></tr></thead>
+            <tbody>{soldPg.rows.map((x) => <tr key={x.p.id}><td><b>{x.p.nombre}</b></td><td className="right num">{qtyFmt(x.q, x.p.unidad)}</td><td className="right num">{x.merma ? qtyFmt(x.merma, x.p.unidad) : '—'}</td><td className="right num">{clp(x.m)}</td></tr>)}
+              {!sold.length && <tr><td colSpan={4} className="empty">Sin ventas este mes</td></tr>}</tbody></table></div>
+          <Pager pg={soldPg} onPage={setSoldPage} label="Páginas de lo vendido" />
+        </div>
+        </div>
         <div className="card"><h3>Egresos</h3>
           <div className="rows"><Row t="Compra de mercadería" sub="recepciones en compra directa" v={b.compras} neg /></div>
           <h4 className="exp-group">Gastos fijos <span className="pill mute">se repiten cada mes</span><b className="num">− {clp(b.tFijos)}</b></h4>
-          <div className="rows">{b.fijos.map((f) => <Row key={f.id} t={f.desc || f.cat} sub={f.cat} v={f.monto} neg edit={() => openEditFixed(f.id)} />)}{!b.fijos.length && <div className="empty">Sin gastos fijos</div>}</div>
+          <div className="rows">{fixPg.rows.map((f) => <Row key={f.id} t={f.desc || f.cat} sub={f.cat} v={f.monto} neg edit={() => openEditFixed(f.id)} />)}{!b.fijos.length && <div className="empty">Sin gastos fijos</div>}</div>
+          <Pager pg={fixPg} onPage={setFixPage} label="Páginas de gastos fijos" />
           <h4 className="exp-group">Gastos variables <span className="pill mute">solo este mes</span><b className="num">− {clp(b.tVars)}</b></h4>
-          <div className="rows">{vars.map((e) => <Row key={e.id} t={e.cat + (e.cantidad ? ` · ${e.cantidad} gamelas` : '')} sub={fdate(e.fecha) + (e.desc ? ' · ' + e.desc : '')} v={e.monto} neg edit={() => openEditVar(e.id, setBm)} />)}{!vars.length && <div className="empty">Sin gastos variables este mes</div>}</div>
+          <div className="rows">{varPg.rows.map((e) => <Row key={e.id} t={e.cat + (e.cantidad ? ` · ${e.cantidad} gamelas` : '')} sub={fdate(e.fecha) + (e.desc ? ' · ' + e.desc : '')} v={e.monto} neg edit={() => openEditVar(e.id, setBm)} />)}{!vars.length && <div className="empty">Sin gastos variables este mes</div>}</div>
+          <Pager pg={varPg} onPage={setVarPage} label="Páginas de gastos variables" />
         </div>
       </div>
-      <div className="card" style={{ marginTop: 14 }}><h3>Lo vendido en {monthName(bm)}<button className="btn sm ghost" onClick={() => openMonthDetail(bm)}><Icon n="print" s={15} />Cierre del mes (PDF)</button></h3>
-        <div className="scroll"><table className="tbl"><thead><tr><th>Producto</th><th className="right">Vendido</th><th className="right">Merma</th><th className="right">Monto</th></tr></thead>
-          <tbody>{sold.map((x) => <tr key={x.p.id}><td><b>{x.p.nombre}</b></td><td className="right num">{qtyFmt(x.q, x.p.unidad)}</td><td className="right num">{x.merma ? qtyFmt(x.merma, x.p.unidad) : '—'}</td><td className="right num">{clp(x.m)}</td></tr>)}
-            {!sold.length && <tr><td colSpan={4} className="empty">Sin ventas este mes</td></tr>}</tbody></table></div>
-      </div>
       <div className="card" style={{ marginTop: 14 }}><h3>Últimos meses<span style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}><button className="btn sm ghost" onClick={exportSalesCSV}>Exportar ventas</button><button className="btn sm ghost" onClick={exportMonths}>Exportar meses</button></span></h3>
-        <div className="scroll"><table className="tbl"><thead><tr><th>Mes</th><th className="right">Ventas</th><th className="right">N° ventas</th>{fams.map((f) => <th key={f} className="right">{f === 'Otros' ? 'Sin clasificar' : f}</th>)}<th className="right">Gamelas (envase)</th><th className="right">Ingresos</th><th className="right">Egresos</th><th className="right">Resultado</th></tr></thead>
-          <tbody>{ms.map((m) => {
+        <div className="scroll"><table className="tbl m-cards"><thead><tr><th>Mes</th><th className="right">Ventas</th><th className="right">N° ventas</th>{fams.map((f) => <th key={f} className="right m-hide">{f === 'Otros' ? 'Sin clasificar' : f}</th>)}<th className="right m-hide">Gamelas (envase)</th><th className="right">Ingresos</th><th className="right">Egresos</th><th className="right">Resultado</th></tr></thead>
+          <tbody>{monPg.rows.map((m) => {
             const u = unitTotals(m), c = (k: string) => (u[k] ? qtyFmt(u[k].qty, u[k].unidad) : '—');
             const pick = () => { setBm(m.mk); window.scrollTo(0, 0); };
             return (
@@ -85,9 +95,27 @@ export function Balance() {
               </tr>
             );
           })}</tbody></table></div>
+        <Pager pg={monPg} onPage={setMonPage} label="Páginas de meses" />
         <p className="muted" style={{ fontSize: 12, margin: '8px 0 0' }}>Toca un mes para verlo arriba.</p>
       </div>
     </>
+  );
+}
+
+/** Detalle bajo el ingreso del mes (lo comparten Balance y Dashboard para que digan lo mismo). */
+export function IncomeSub({ b }: { b: MonthStats }) {
+  return <>de {clp(b.ventas)} vendidos en {b.n} ventas{anulTxt(b.anul)}{b.porRecuperar > 0 && <> · <span style={{ color: 'var(--bad)' }}>− {clp(b.porRecuperar)} por diferencia de caja</span></>}</>;
+}
+/** Aviso de diferencia de caja sin recuperar en el mes (Balance y Dashboard). */
+export function ShortageAlert({ b, style }: { b: MonthStats; style?: React.CSSProperties }) {
+  if (b.porRecuperar <= 0) return null;
+  return (
+    <section className="card request-alert" role="alert" style={style}>
+      <h3>Hay una diferencia de caja de {clp(b.porRecuperar)} en {monthName(b.mk)}</h3>
+      <div className="rows"><div style={{ flexWrap: 'wrap', gap: '8px 12px' }}><div className="grow"><b>{b.porRecuperarN === 1 ? 'Un cierre autorizado con faltante' : b.porRecuperarN + ' cierres autorizados con faltante'}</b>
+        <span>Se descontó del ingreso del mes. Al recuperar el monto (total o parcial) desde Cierre de caja, el ingreso se ajusta solo.</span></div>
+        <button type="button" className="btn sm pri" onClick={() => go('caja')}>Ver cierres</button></div></div>
+    </section>
   );
 }
 

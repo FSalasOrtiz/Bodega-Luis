@@ -106,6 +106,7 @@ describe('vendedor', () => {
   });
   it('no aprueba cierres ni autoriza sus propias solicitudes', async () => {
     await assertFails(updateDoc(doc(as('samuel'), 'closures', 'k1'), { aprobado: 'samuel', _v: 2, _u: serverTimestamp() }));
+    await assertFails(updateDoc(doc(as('samuel'), 'closures', 'k1'), { recuperado: 1000, recuperadoPor: 'samuel', recuperadoEn: now(), _v: 2, _u: serverTimestamp() }));
     await assertSucceeds(setDoc(doc(as('gonzalo'), 'creditRequests', 'c1'), create({ id: 'c1', user: 'gonzalo', estado: 'pendiente', clienteNombre: 'X', monto: 1000, total: 2000, fecha: now() })));
     await assertFails(updateDoc(doc(as('gonzalo'), 'creditRequests', 'c1'), { estado: 'aprobada', resueltoEn: now(), _v: 2, _u: serverTimestamp() }));
     await assertSucceeds(updateDoc(doc(as('gonzalo'), 'creditRequests', 'c1'), { estado: 'cancelada', resueltoEn: now(), _v: 2, _u: serverTimestamp() }));
@@ -126,6 +127,8 @@ describe('administrador', () => {
     await assertSucceeds(updateDoc(doc(as('luis'), 'products', 'p1'), { precio: 21000, _v: 2, _u: serverTimestamp() }));
     await assertFails(updateDoc(doc(as('luis'), 'products', 'p1'), { precio: 15000.5, _v: 3, _u: serverTimestamp() }));
     await assertSucceeds(updateDoc(doc(as('luis'), 'closures', 'k1'), { aprobado: 'luis', _v: 2, _u: serverTimestamp() }));
+    await assertSucceeds(updateDoc(doc(as('luis'), 'closures', 'k1'), { recuperado: 1000, recuperadoPor: 'luis', recuperadoEn: now(), recuperaciones: [{ monto: 1000, por: 'luis', en: now() }], _v: 3, _u: serverTimestamp() }));
+    await assertFails(updateDoc(doc(as('luis'), 'closures', 'k1'), { declarado: 999999, _v: 4, _u: serverTimestamp() }));
     await assertSucceeds(getDoc(doc(as('luis'), 'liqs', 'q1')));
   });
   it('no puede crear usuarios ni cambiar roles desde el navegador (solo la Cloud Function)', async () => {
