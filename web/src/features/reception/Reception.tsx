@@ -2,12 +2,13 @@ import { useState } from 'react';
 import { Icon } from '../../components/icons';
 import { Head, ItemList, paginate, Pager, Seg } from '../../components/ui';
 import { closeModal, openModal } from '../../components/modal';
-import { kgGam, P, PR, recProducts, U } from '../../domain/catalog';
+import { kgGam, P, Popt, PR, recProducts, U } from '../../domain/catalog';
 import { ctx, isAdmin, me } from '../../domain/ctx';
 import { clp, fdt, kg, now, qtyFmt } from '../../domain/format';
 import { kgGamTxt } from '../../domain/gamelas';
 import { saveMermaCmd, saveReceptionCmd, voidReceptionCmd, type RecLineInput } from '../../domain/operations';
-import { SRC_LBL, srcStock } from '../../domain/stock';
+import { lotStock, SRC_LBL, srcStock } from '../../domain/stock';
+import { embLabel, lotPrice, openEmbarques } from '../../domain/embarques';
 import type { Fuente, Modalidad } from '../../types/model';
 import { useApp } from '../../state/store';
 import { exec, execOk } from '../../app/actions';
@@ -40,7 +41,7 @@ function RecView() {
   const [f, setFState] = useState<RecForm>(() => recFormCache || newRecForm());
   const setF = (v: RecForm | ((x: RecForm) => RecForm)) => setFState((x) => { const n = typeof v === 'function' ? v(x) : v; recFormCache = n; return n; });
   const [busy, setBusy] = useState(false);
-  const S = ctx.S;
+  const S = ctx.S, admin = isAdmin();
   const upd = (i: number, patch: Partial<RecLineInput>) => setF((x) => ({ ...x, lineas: x.lineas.map((l, j) => (j === i ? { ...l, ...patch } : l)) }));
   const tot = f.lineas.reduce((a, l) => { const p = P(l.prod); const q = Number(String(l.qty).replace(',', '.')) || 0; return { g: a.g + (p?.unidad === 'gamela' ? q : 0), k: a.k + (p?.unidad === 'kg' ? q : 0), c: a.c + q * (Number(l.costo) || 0) }; }, { g: 0, k: 0, c: 0 });
   const recent = S.receptions.slice().sort((a, b) => b.fecha - a.fecha).slice(0, 8);
@@ -72,9 +73,11 @@ function RecView() {
                   <input id={`rl-q-${i}`} className="in num" type="text" inputMode="decimal" autoComplete="off" placeholder="0" value={String(l.qty)} onChange={(e) => upd(i, { qty: e.target.value })} /></div>
                 {kgGam(p) && <div className="f"><label htmlFor={`rl-g-${i}`}>Gamelas</label><input id={`rl-g-${i}`} className="in num" type="text" inputMode="numeric" autoComplete="off" placeholder="0" value={l.gam ?? ''} onChange={(e) => upd(i, { gam: e.target.value.trim() })} /></div>}
                 {f.modalidad === 'compra' && !p?.envase && <div className="f"><label htmlFor={`rl-c-${i}`}>Costo {p?.unidad === 'kg' ? '/kg' : '/gamela'}</label><input id={`rl-c-${i}`} className="in num" type="number" inputMode="numeric" placeholder="$" value={String(l.costo ?? '')} onChange={(e) => upd(i, { costo: e.target.value })} /></div>}
+                {admin && p && !p.envase && <div className="f"><label htmlFor={`rl-v-${i}`}>Precio de venta {p.unidad === 'kg' ? '/kg' : '/gamela'}</label><input id={`rl-v-${i}`} className="in num" type="number" inputMode="numeric" placeholder={String(p.precio)} aria-describedby="rl-vh-0" value={l.precio ?? ''} onChange={(e) => upd(i, { precio: e.target.value })} /></div>}
               </div>
             );
           })}
+          {admin && <p className="muted" id="rl-vh-0" style={{ fontSize: 12.5, margin: '4px 0 10px' }}>Precio de venta: déjalo vacío para vender este embarque al precio actual. Si pones otro, ese pasa a ser el precio de los embarques nuevos y lo que ya está en bodega se sigue vendiendo a su precio anterior.</p>}
           <button className="btn ghost sm" onClick={() => setF((x) => ({ ...x, lineas: [...x.lineas, { prod: firstProduct(), qty: '', costo: '' }] }))}><Icon n="plus" s={16} />Agregar producto</button>
           <div className="total" style={{ fontSize: 18 }}><span>Total recepción</span><span className="num">{tot.g ? tot.g + ' gamelas' : ''}{tot.g && tot.k ? ' · ' : ''}{tot.k ? kg(tot.k) + ' kg' : ''}{!tot.g && !tot.k ? '—' : ''}{f.modalidad === 'compra' && tot.c ? ' · ' + clp(tot.c) : ''}</span></div>
           <button className="btn pri big" disabled={busy} onClick={() => void save()}>{busy ? 'Guardando…' : 'Guardar recepción'}</button>
@@ -102,7 +105,7 @@ export function ReceptionHistory() {
       <div className="scroll"><table className="tbl m-cards"><thead><tr><th>Fecha</th><th>Productor / proveedor</th><th>Modalidad</th><th>Productos</th><th>Estado</th><th></th></tr></thead>
         <tbody>{pg.rows.map((r) => (
           <tr key={r.id}><td className="when">{fdt(r.fecha)}</td><td>{(r.proveedor || PR(r.productor)).nombre}</td><td>{r.modalidad === 'compra' ? 'Compra directa' : 'Consignación'}</td>
-            <td><ItemList items={r.lineas.map((l) => (l.nombre || P(l.prod).nombre) + ' × ' + qtyFmt(l.qty, l.unidad || P(l.prod).unidad) + (l.gamelas ? ` (${l.gamelas} gam.)` : '')).concat(r.gamelas ? ['Gamelas × ' + r.gamelas] : [])} /></td>
+            <td><ItemList items={r.lineas.map((l) => (l.nombre || Popt(l.prod)?.nombre || 'Producto') + ' × ' + qtyFmt(l.qty, l.unidad || Popt(l.prod)?.unidad || 'gamela') + (l.gamelas ? ` (${l.gamelas} gam.)` : '')).concat(r.gamelas ? ['Gamelas × ' + r.gamelas] : [])} /></td>
             <td>{r.anulada ? 'Anulada' : 'Registrada'}</td><td><button className="btn ghost sm" onClick={() => openRecDoc(r.id)}>Ver comprobante</button></td></tr>
         ))}{!pg.rows.length && <tr><td colSpan={6} className="empty">Sin recepciones</td></tr>}</tbody></table></div>
       {all.length > 0 && <p className="muted" style={{ margin: '10px 0 0' }}>Mostrando {pg.from}–{pg.to} de {all.length} recepciones.</p>}
@@ -114,20 +117,26 @@ export function ReceptionHistory() {
 function MermaView() {
   const S = ctx.S;
   const [prod, setProd] = useState(() => S.products.find((p) => p.activo && !p.envase)?.id || '');
-  const [src, setSrc] = useState<Fuente>('consig'), [qty, setQty] = useState(''), [gam, setGam] = useState('');
-  const p = P(prod), available = srcStock(p.id, src), q = Number(qty.replace(',', '.'));
-  const save = async () => { if (await execOk(() => saveMermaCmd(prod, src, qty, gam), 'Merma registrada.')) { setQty(''); setGam(''); } };
+  const [src, setSrc] = useState<Fuente>('consig'), [qty, setQty] = useState(''), [gam, setGam] = useState(''), [lotSel, setLot] = useState('');
+  const p = P(prod), embs = openEmbarques(p.id, src), q = Number(qty.replace(',', '.'));
+  // con más de un embarque, el usuario elige de cuál sale la merma
+  const lot = embs.length === 1 ? embs[0].id : embs.some((l) => l.id === lotSel) ? lotSel : '';
+  const mustPick = embs.length > 1 && !lot, available = lot ? lotStock(lot) : srcStock(p.id, src);
+  const save = async () => { if (await execOk(() => saveMermaCmd(prod, src, qty, gam, lot), 'Merma registrada.')) { setQty(''); setGam(''); setLot(''); } };
   return (
     <div className="card"><h3>Registrar merma</h3>
-      <div className="f"><label>Sale del stock de</label><Seg<Fuente> value={src} options={[['consig', SRC_LBL.consig], ['directa', SRC_LBL.directa]]} onChange={setSrc} label="Sale del stock de" /></div>
+      <div className="f"><label>Sale del stock de</label><Seg<Fuente> value={src} options={[['consig', SRC_LBL.consig], ['directa', SRC_LBL.directa]]} onChange={(x) => { setSrc(x); setLot(''); }} label="Sale del stock de" /></div>
       <div className="f"><label htmlFor="waste-product">Producto</label>
-        <select id="waste-product" className="in" value={prod} onChange={(e) => { setProd(e.target.value); setQty(''); setGam(''); }}>{S.products.filter((x) => x.activo && !x.envase).map((x) => <option key={x.id} value={x.id}>{x.nombre}</option>)}</select></div>
-      <p className="muted">Disponible en {SRC_LBL[src].toLowerCase()}: {qtyFmt(available, p.unidad)}</p>
+        <select id="waste-product" className="in" value={prod} onChange={(e) => { setProd(e.target.value); setQty(''); setGam(''); setLot(''); }}>{S.products.filter((x) => x.activo && !x.envase).map((x) => <option key={x.id} value={x.id}>{x.nombre}</option>)}</select></div>
+      {embs.length > 1 && <div className="f"><label htmlFor="waste-lot">¿De qué embarque sale?</label>
+        <select id="waste-lot" className="in" value={lot} onChange={(e) => setLot(e.target.value)}><option value="">Elige el embarque</option>
+          {embs.map((l) => <option key={l.id} value={l.id}>{embLabel(l)} · quedan {qtyFmt(lotStock(l.id), p.unidad)} · {clp(lotPrice(l))}</option>)}</select></div>}
+      <p className="muted">{mustPick ? `Hay ${embs.length} embarques con stock en ${SRC_LBL[src].toLowerCase()}.` : `Disponible ${lot && embs.length > 1 ? 'en este embarque' : 'en ' + SRC_LBL[src].toLowerCase()}: ${qtyFmt(available, p.unidad)}`}</p>
       <div className="f"><label htmlFor="waste-qty">Cantidad que se bota ({p.unidad === 'kg' ? 'kg' : 'gamelas'})</label>
         <input id="waste-qty" className="in num" type="text" inputMode="decimal" autoComplete="off" value={qty} onChange={(e) => setQty(e.target.value)} /></div>
       {kgGam(p) && <div className="f"><label htmlFor="waste-gam">Gamelas que se botan</label><input id="waste-gam" className="in num" type="text" inputMode="numeric" autoComplete="off" placeholder="0" value={gam} onChange={(e) => setGam(e.target.value.trim())} /><small className="muted">{kgGamTxt(p.id)}</small></div>}
       {q > available && <p className="err">La cantidad supera el stock disponible.</p>}
-      <button className="btn pri big" disabled={!Number.isFinite(q) || q <= 0 || q > available} onClick={() => void save()}>Confirmar merma</button>
+      <button className="btn pri big" disabled={mustPick || !Number.isFinite(q) || q <= 0 || q > available} onClick={() => void save()}>Confirmar merma</button>
     </div>
   );
 }
@@ -151,7 +160,7 @@ function RecDoc({ id }: { id: string }) {
         <p className="reception-status">Comprobante interno · {r.anulada ? 'ANULADO' : r.modalidad === 'compra' ? 'Compra directa' : 'Consignación'}</p>
         <dl><dt>Productor / proveedor</dt><dd>{pr.nombre}</dd><dt>RUT</dt><dd>{pr.rut || 'No registrado'}</dd><dt>Teléfono</dt><dd>{pr.fono || 'No registrado'}</dd><dt>Recibió</dt><dd>{U(r.user).nombre}</dd></dl>
         <div className="scroll"><table><thead><tr><th>Producto</th><th>Cantidad</th>{r.modalidad === 'compra' && <><th>Costo unitario</th><th>Subtotal</th></>}</tr></thead>
-          <tbody>{r.lineas.map((l, i) => <tr key={i}><td>{l.nombre || P(l.prod).nombre}</td><td>{qtyFmt(l.qty, l.unidad || P(l.prod).unidad)}{l.gamelas ? ` · ${l.gamelas} gamela${l.gamelas === 1 ? '' : 's'}` : ''}</td>{r.modalidad === 'compra' && <><td>{clp(l.costo)}</td><td>{clp(l.qty * l.costo)}</td></>}</tr>)}</tbody></table></div>
+          <tbody>{r.lineas.map((l, i) => <tr key={i}><td>{l.nombre || Popt(l.prod)?.nombre || 'Producto'}</td><td>{qtyFmt(l.qty, l.unidad || Popt(l.prod)?.unidad || 'gamela')}{l.gamelas ? ` · ${l.gamelas} gamela${l.gamelas === 1 ? '' : 's'}` : ''}</td>{r.modalidad === 'compra' && <><td>{clp(l.costo)}</td><td>{clp(l.qty * l.costo)}</td></>}</tr>)}</tbody></table></div>
         {r.gamelas ? <p>Gamelas recibidas: <b>{r.gamelas}</b></p> : null}
         {r.modalidad === 'compra' ? <p className="reception-total">Total compra <b>{clp(total)}</b></p> : r.comision != null ? <p>Comisión de consignación: {r.comision}%</p> : <p>Consignación: la comisión se fija en cada venta.</p>}
         <div className="reception-print-footer">{r.foto && <p>Guía adjunta: {r.foto} (archivo antiguo no almacenado)</p>}<p className="reception-signature">Firma recepción: __________________________</p><small>Registro interno de ingreso de mercadería. No constituye un documento tributario.</small></div>

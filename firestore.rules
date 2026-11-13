@@ -77,10 +77,12 @@ service cloud.firestore {
       // solo el administrador anula (corrige) una recepción
       allow update: if canUpdate(isAdmin());
     }
+    // precio propio del embarque: solo lo fija el administrador, y debe ser un entero positivo
+    function lotPriceOk() { return !('precio' in data()) || (data().precio is int && data().precio > 0); }
     match /lots/{id} {
       allow read: if staff();
-      allow create: if canCreate(staff(), id);
-      allow update: if canUpdate(isAdmin());
+      allow create: if canCreate(staff(), id) && lotPriceOk() && (!('precio' in data()) || isAdmin());
+      allow update: if canUpdate(isAdmin()) && lotPriceOk();
     }
     // libro de movimientos: solo se agregan; nunca se modifican ni se borran
     match /moves/{id} {

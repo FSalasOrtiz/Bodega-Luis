@@ -11,8 +11,8 @@ export const pendingCreditRequests = (): CreditRequest[] => (ctx.S.creditRequest
 
 export const priceReq = (id: string | undefined): PriceRequest | undefined => (ctx.S.priceRequests || []).find((r) => r.id === id);
 export const pendingPriceRequests = (): PriceRequest[] => (ctx.S.priceRequests || []).filter((r) => r.estado === 'pendiente').sort((a, b) => a.fecha - b.fecha);
-export const priceRequestMatches = (r: PriceRequest | undefined, c: Pick<CartLine, 'prod' | 'qty'>, user: string | undefined): boolean =>
-  !!r && r.estado === 'aprobada' && r.user === user && r.prod === c.prod && r.qty === c.qty && !r.saleId;
+export const priceRequestMatches = (r: PriceRequest | undefined, c: Pick<CartLine, 'prod' | 'qty' | 'lot'>, user: string | undefined): boolean =>
+  !!r && r.estado === 'aprobada' && r.user === user && r.prod === c.prod && r.qty === c.qty && (r.lot || '') === (c.lot || '') && !r.saleId;
 
 export const comReq = (id: string | undefined): ComRequest | undefined => (ctx.S.comRequests || []).find((r) => r.id === id);
 export const pendingComRequests = (): ComRequest[] => (ctx.S.comRequests || []).filter((r) => r.estado === 'pendiente').sort((a, b) => a.fecha - b.fecha);

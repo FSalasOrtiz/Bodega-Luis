@@ -122,6 +122,21 @@ describe('vendedor', () => {
   });
 });
 
+describe('embarques (precio por lote)', () => {
+  const lot = (id: string, extra: Record<string, unknown> = {}) => create({ id, rec: 'r1', prod: 'p1', qty: 10, costo: 0, fecha: now(), productor: 'pr1', modalidad: 'consignación', ...extra });
+  it('el vendedor recibe un embarque sin precio propio, pero no puede ponerle precio', async () => {
+    await assertSucceeds(setDoc(doc(as('gonzalo'), 'lots', 'e1'), lot('e1')));
+    await assertFails(setDoc(doc(as('gonzalo'), 'lots', 'e2'), lot('e2', { precio: 1000 })));
+  });
+  it('el admin fija o cambia el precio de un embarque (entero positivo)', async () => {
+    await assertSucceeds(setDoc(doc(as('luis'), 'lots', 'e3'), lot('e3', { precio: 25000 })));
+    await assertFails(setDoc(doc(as('luis'), 'lots', 'e4'), lot('e4', { precio: 0 })));
+    await assertFails(setDoc(doc(as('luis'), 'lots', 'e5'), lot('e5', { precio: 1500.5 })));
+    await assertSucceeds(updateDoc(doc(as('luis'), 'lots', 'e3'), { precio: 27000, _v: 2, _u: serverTimestamp() }));
+    await assertFails(updateDoc(doc(as('gonzalo'), 'lots', 'e3'), { precio: 1, _v: 3, _u: serverTimestamp() }));
+  });
+});
+
 describe('administrador', () => {
   it('cambia precios con versión válida, aprueba cierres y ve liquidaciones', async () => {
     await assertSucceeds(updateDoc(doc(as('luis'), 'products', 'p1'), { precio: 21000, _v: 2, _u: serverTimestamp() }));

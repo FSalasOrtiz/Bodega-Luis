@@ -111,6 +111,21 @@ h1,h2,h3{margin:0;letter-spacing:-.02em}
 .prods{display:grid;grid-template-columns:repeat(auto-fill,minmax(170px,1fr));gap:10px}
 .prod{background:var(--card);border:1.5px solid transparent;border-radius:18px;padding:14px;text-align:left;cursor:pointer;display:flex;flex-direction:column;gap:6px;min-height:120px}
 .prod:hover{border-color:var(--g300)}
+/* embarques: elegir de qué llegada sale la venta */
+.emb-pick{border:0;padding:0;margin:10px 0 4px;display:flex;flex-direction:column;gap:8px}
+.emb-pick legend{font-weight:600;font-size:13px;color:var(--muted);margin-bottom:6px;padding:0}
+.emb-opt{display:flex;align-items:center;gap:12px;padding:12px 14px;border:1.5px solid var(--line);border-radius:14px;cursor:pointer;background:var(--card);min-height:56px}
+.emb-opt:hover{border-color:var(--g300)}
+.emb-opt.on{border-color:var(--g700);background:var(--g100)}
+.emb-opt.out{opacity:.55;cursor:default}
+.emb-opt input{accent-color:var(--g700);width:18px;height:18px;flex:none;margin:0}
+.emb-opt .grow{display:flex;flex-direction:column;gap:2px;min-width:0}
+.emb-opt small{color:var(--muted);font-size:12.5px}
+.emb-opt>b{white-space:nowrap;font-size:15px}
+.emb-opt>b small{font-weight:600}
+.emb-prices>div{align-items:center}
+.emb-prices input{max-width:150px;flex:none}
+.emb-tag{display:inline-block;font-size:11.5px;font-weight:600;color:var(--muted)}
 .prod .nm{font-weight:700;font-size:14.5px;line-height:1.2}
 .prod .pr{font-size:18px;font-weight:800;color:var(--g800);margin-top:auto}
 .prod .st{font-size:12px;color:var(--muted)}

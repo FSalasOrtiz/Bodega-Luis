@@ -6,11 +6,12 @@ import { isAdmin, me } from '../../domain/ctx';
 import { creditBalance, findClientByName, liveClients } from '../../domain/credits';
 import { clp, pctTxt, qtyFmt, searchText } from '../../domain/format';
 import { gamCalc, gamError, type GamCalc } from '../../domain/gamelas';
-import { cartHasConsig, cartPrice, cancelRequestCmd, filteredProducts, posLeft, posSrc, saleCom } from '../../domain/pos';
+import { cartBasePrice, cartHasConsig, cartPrice, cancelRequestCmd, filteredProducts, posLeft, posSrc, saleCom } from '../../domain/pos';
+import { embLabel, embName, embNum, findLot, lotPrice, openEmbarques, openPrices, priceRange } from '../../domain/embarques';
 import { comBase } from '../../domain/catalog';
 import { comReq, comRequestMatches, creditReq, creditRequestMatches, priceReq, priceRequestMatches } from '../../domain/requests';
 import { receiptPayment } from '../../domain/receipts';
-import { SRC_LBL, srcStock } from '../../domain/stock';
+import { lotSrc, lotStock, SRC_LBL, srcStock } from '../../domain/stock';
 import type { CartLine, Fuente, MedioPago } from '../../types/model';
 import { store, useApp } from '../../state/store';
 import { exec } from '../../app/actions';
@@ -23,7 +24,7 @@ export function Pos() {
   const { ui } = useApp();
   const [q, setQ] = useState(''), [fam, setFam] = useState('Todas');
   const ps = filteredProducts(q, fam);
-  const items = ui.cart.map((c, i) => { const p = P(c.prod), precio = cartPrice(c); return { ...c, p, i, precio, sub: Math.round(c.qty * precio) }; });
+  const items = ui.cart.map((c, i) => { const p = P(c.prod), precio = cartPrice(c), base = cartBasePrice(c); return { ...c, p, i, precio, base, sub: Math.round(c.qty * precio) }; });
   const prodTotal = items.reduce((a, c) => a + c.sub, 0), g = gamCalc(), gErr = gamError(g, prodTotal);
   const total = prodTotal + g.monto, canSell = (items.length > 0 || g.net > 0) && !gErr;
   // crédito: se anota cuánto paga ahora y el resto queda a crédito
@@ -49,7 +50,8 @@ export function Pos() {
                 <button key={p.id} className={`prod ${s <= 0 ? 'out' : ''}`} onClick={() => openItem(p.id)} onContextMenu={(e) => { e.preventDefault(); priceCheck(p.id); }}>
                   <span className="muted" style={{ fontSize: 11 }}>{p.sku}</span><span className="nm">{p.nombre}</span>
                   <span className="st">{s <= 0 ? <span className="pill bad">Sin stock</span> : 'Quedan ' + qtyFmt(s, p.unidad)}</span>
-                  <span className="pr num">{clp(p.precio)}<small style={{ fontSize: 12, fontWeight: 600 }}>{p.unidad === 'kg' ? ' /kg' : ' /gamela'}</small></span>
+                  <span className="pr num"><PriceTxt pid={p.id} src={src} /><small style={{ fontSize: 12, fontWeight: 600 }}>{p.unidad === 'kg' ? ' /kg' : ' /gamela'}</small></span>
+                  {openEmbarques(p.id, src).length > 1 && <span className="emb-tag">{openEmbarques(p.id, src).length} embarques{openPrices(p.id, src).length > 1 ? ' · precios distintos' : ''}</span>}
                 </button>
               );
             })}
@@ -61,7 +63,7 @@ export function Pos() {
           {items.length ? items.map((c) => (
             <div className="line" key={c.i}>
               <div className="grow"><b>{c.p.nombre}</b>
-                <small>{c.src && <><span className={`pill ${c.src === 'consig' ? 'mute' : 'ok'}`}>{SRC_LBL[c.src]}</span> </>}{qtyFmt(c.qty, c.p.unidad)}{c.gam ? ` (${c.gam} gamela${c.gam === 1 ? '' : 's'})` : ''} × {c.precio !== c.p.precio ? <><s>{clp(c.p.precio)}</s> <b>{clp(c.precio)}</b></> : clp(c.p.precio)}</small>
+                <small>{c.src && <><span className={`pill ${c.src === 'consig' ? 'mute' : 'ok'}`}>{SRC_LBL[c.src]}</span> </>}<CartEmb lot={c.lot} />{qtyFmt(c.qty, c.p.unidad)}{c.gam ? ` (${c.gam} gamela${c.gam === 1 ? '' : 's'})` : ''} × {c.precio !== c.base ? <><s>{clp(c.base)}</s> <b>{clp(c.precio)}</b></> : clp(c.base)}</small>
                 <PriceLineStatus c={c} i={c.i} />
               </div>
               <b className="num">{clp(c.sub)}</b>
@@ -107,7 +109,7 @@ function SuggestBox({ q, setQ }: { q: string; setQ: (v: string) => void }) {
             <button key={p.id} onClick={() => { setQ(''); openItem(p.id); }}>
               <span className={`ico ${p.familia === 'Tomate' ? 't' : p.familia === 'Palta' ? 'p' : 'o'}`}>{p.calibre.slice(0, 3)}</span>
               <span className="grow"><b><Hl t={p.nombre} q={t} /></b><small><Hl t={p.sku} q={t} /> · {st > 0 ? 'quedan ' + qtyFmt(st, p.unidad) : 'sin stock'}</small></span>
-              <b className="num">{clp(p.precio)}{p.unidad === 'kg' ? '/kg' : ''}</b>
+              <b className="num"><PriceTxt pid={p.id} src={posSrc()} />{p.unidad === 'kg' ? '/kg' : ''}</b>
             </button>
           );
         })}</div>
@@ -125,12 +127,13 @@ export function Hl({ t, q }: { t: string; q: string }) {
 
 export function priceCheck(pid: string): void {
   openModal(() => {
-    const p = P(pid);
+    const p = P(pid), embs = openEmbarques(pid);
     return (
       <>
         <p className="muted" style={{ margin: 0 }}>Consulta de precio · {p.sku}</p><h2>{p.nombre}</h2>
-        <div className="kpi"><div className="val num" style={{ color: 'var(--g800)' }}>{clp(p.precio)}{p.unidad === 'kg' && <small style={{ fontSize: 16 }}> /kg</small>}</div></div>
+        <div className="kpi"><div className="val num" style={{ color: 'var(--g800)' }}><PriceTxt pid={pid} src={posSrc()} />{p.unidad === 'kg' && <small style={{ fontSize: 16 }}> /kg</small>}</div></div>
         <p>Stock en consignación: <b>{qtyFmt(srcStock(pid, 'consig'), p.unidad)}</b> · compra directa: <b>{qtyFmt(srcStock(pid, 'directa'), p.unidad)}</b></p>
+        {embs.length > 1 && <div className="rows">{embs.map((l) => <div key={l.id}><div className="grow"><b>{embLabel(l)}</b><span>{SRC_LBL[lotSrc(l)]} · quedan {qtyFmt(lotStock(l.id), p.unidad)}</span></div><b className="num">{clp(lotPrice(l))}</b></div>)}</div>}
         <div className="acts"><button className="btn ghost" onClick={closeModal}>Cerrar</button><button className="btn pri" onClick={() => openItem(pid)}>Vender</button></div>
       </>
     );
@@ -141,6 +144,19 @@ async function removeCartLine(i: number): Promise<void> {
   const c = store.get().ui.cart[i];
   if (c?.priceReq) await exec(() => cancelRequestCmd('priceRequests', c.priceReq));
   store.setUi((u) => ({ cart: u.cart.filter((_, j) => j !== i) }));
+}
+
+/** Precio del producto: uno solo, o "desde – hasta" si sus embarques tienen precios distintos. */
+function PriceTxt({ pid, src }: { pid: string; src?: Fuente }) {
+  const [a, b] = priceRange(pid, src);
+  return <>{a === b ? clp(a) : `${clp(a)} – ${clp(b)}`}</>;
+}
+
+/** Embarque de la línea del carrito, solo si el producto tiene más de uno con stock (si no, no aporta). */
+function CartEmb({ lot }: { lot?: string }) {
+  const l = findLot(lot);
+  if (!l || openEmbarques(l.prod, lotSrc(l)).length < 2) return null;
+  return <><span className="pill warn" title={embLabel(l)}>{embNum(l) ? `Emb. ${embNum(l)}` : embName(l)}</span> </>;
 }
 
 function PriceLineStatus({ c, i }: { c: CartLine & { p: ReturnType<typeof P> }; i: number }) {

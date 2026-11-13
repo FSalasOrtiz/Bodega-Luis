@@ -3,6 +3,7 @@ import { gamProd, kgGam, lotCommission, P } from './catalog';
 import { ctx } from './ctx';
 import { liveClients } from './credits';
 import { now, qtyFmt, round2, uid } from './format';
+import { findLot, lotPrice } from './embarques';
 import { gamelaReturnLot } from './gamelas';
 import { receiptData } from './receipts';
 import { vig } from './requests';
@@ -15,7 +16,7 @@ export const saleCash = (s: Sale): number => s.pagos.filter((p) => p.medio === '
 export const saleCard = (s: Sale): number => s.pagos.filter((p) => p.medio === 'tarjeta').reduce((a, p) => a + p.monto, 0);
 export const saleTr = (s: Sale): number => s.pagos.filter((p) => p.medio === 'transferencia').reduce((a, p) => a + p.monto, 0);
 
-export interface SaleItem { prod: string; qty: number; src?: Fuente; gam?: number; precio?: number; precioEsp?: boolean; priceReq?: string }
+export interface SaleItem { prod: string; qty: number; src?: Fuente; lot?: string; gam?: number; precio?: number; precioEsp?: boolean; priceReq?: string }
 export interface MakeSaleInput {
   vendedor: string; items: SaleItem[]; pago: PagoSeleccion; pagoEf?: number; fecha?: number; documento?: Documento;
   receptor?: Partial<Receptor> | null; cliente?: string; gamelas?: { lleva: number; trae: number } | null; comision?: number | null;
@@ -47,7 +48,14 @@ export function makeSale({ vendedor, items, pago, pagoEf, fecha, documento = 'bo
     // gamelas que trae el cliente de más: línea negativa que descuenta de la compra y devuelve stock al lote de gamelas
     // el stock de gamelas es informativo: nunca bloquea una venta
     const src: Fuente | undefined = !p.envase && isFuente(it.src) ? it.src : undefined;
-    if (!devGam && p.unidad === 'kg' && !p.envase) {
+    // embarque elegido: la línea sale solo de ese lote y su precio normal es el del embarque
+    const emb = !p.envase && it.lot ? findLot(it.lot) : undefined;
+    if (!p.envase && it.lot && (!emb || emb.prod !== p.id || (src && lotSrc(emb) !== src))) throw new Error(`El embarque elegido de ${p.nombre} ya no está disponible. Vuelve a agregar el producto.`);
+    if (emb) {
+      const left = lotStock(emb.id, at) - (reserved.get(emb.id) || 0), extra = scaleOver(p, left, qty);
+      if (qty > left + 1e-9 && !extra) throw new Error(`No alcanza el stock de ${p.nombre} en el embarque elegido. Quedan ${qtyFmt(Math.max(0, left), p.unidad)}.`);
+      if (extra) S.moves.push({ id: uid('m'), lot: emb.id, prod: p.id, tipo: 'ajuste', qty: extra, user: vendedor, fecha: at, motivo: `Vendido sobre el stock registrado (venta N° ${sale.num})`, ref: sale.id });
+    } else if (!devGam && p.unidad === 'kg' && !p.envase) {
       const open = srcLots(p.id, src).map((l) => ({ l, a: lotStock(l.id, at) - (reserved.get(l.id) || 0) })).filter((x) => x.a > 1e-9);
       const avail = open.reduce((n, x) => n + x.a, 0), extra = scaleOver(p, avail, qty);
       if (extra) {
@@ -56,12 +64,15 @@ export function makeSale({ vendedor, items, pago, pagoEf, fecha, documento = 'bo
         S.moves.push({ id: uid('m'), lot: lot.id, prod: p.id, tipo: 'ajuste', qty: extra, user: vendedor, fecha: at, motivo: `Vendido sobre el stock registrado (venta N° ${sale.num})`, ref: sale.id });
       }
     }
-    const alloc = devGam ? [{ lot: gamelaReturnLot(at).id, qty }] : reserveFifo(p.id, qty, at, reserved, src) || (p.envase ? [{ lot: gamelaReturnLot(at).id, qty }] : null);
+    let alloc: { lot: string; qty: number }[] | null;
+    if (emb) { alloc = [{ lot: emb.id, qty }]; reserved.set(emb.id, (reserved.get(emb.id) || 0) + qty); }
+    else alloc = devGam ? [{ lot: gamelaReturnLot(at).id, qty }] : reserveFifo(p.id, qty, at, reserved, src) || (p.envase ? [{ lot: gamelaReturnLot(at).id, qty }] : null);
     if (!alloc) throw new Error(`No alcanza el stock de ${p.nombre}${src ? ' en ' + SRC_LBL[src].toLowerCase() : ''}. Quedan ${qtyFmt(srcStock(p.id, src), p.unidad)}.`);
-    const precio = it.precioEsp && !p.envase && Number.isSafeInteger(it.precio) && (it.precio as number) > 0 ? (it.precio as number) : p.precio;
+    const normal = emb ? lotPrice(emb) : p.precio;
+    const precio = it.precioEsp && !p.envase && Number.isSafeInteger(it.precio) && (it.precio as number) > 0 ? (it.precio as number) : normal;
     const gm = kgGam(p) && Number.isInteger(it.gam) && (it.gam as number) > 0 ? (it.gam as number) : 0;
     sale.lineas.push({
-      prod: p.id, unidad: p.unidad, qty, precio, ...(src ? { src } : {}), ...(gm ? { gamelas: gm } : {}), ...(precio !== p.precio ? { precioNormal: p.precio } : {}),
+      prod: p.id, unidad: p.unidad, qty, precio, ...(src ? { src } : {}), ...(gm ? { gamelas: gm } : {}), ...(precio !== normal ? { precioNormal: normal } : {}),
       subtotal: Math.round(qty * precio),
       allocs: alloc.map((a) => { const lot = S.lots.find((l) => l.id === a.lot); return { ...a, comision: comision != null && lotSrc(lot) === 'consig' ? comision : lotCommission(lot), costo: lot?.costo || 0 }; }),
     });

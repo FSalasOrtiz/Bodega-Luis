@@ -7,6 +7,7 @@ import { COM_DEF, gamId, gamInt, GAMELA_PRECIO, kgGam, P, PR, Popt, productFamil
 import { ctx, isAdmin, me } from './ctx';
 import { creditBalance, liveClients } from './credits';
 import { clp, dayKey, decIn, fdate, monthKey, monthName, now, prevMonth, priceErr, priceOk, round2, searchText, today, uid, DAY } from './format';
+import { embName, hasOwnPrice, lotPrice, openEmbarques } from './embarques';
 import { buyGamelas, gamelaReturnLot } from './gamelas';
 import { liqCalc } from './producers';
 import { receiptPayment } from './receipts';
@@ -20,7 +21,7 @@ import { needsFiscalReconciliation, workflowAdmin, workflowTransaction, workflow
 const requireAdmin = (msg = 'Requiere administrador.') => { if (!isAdmin()) throw new Error(msg); };
 
 /* ---------- recepción ---------- */
-export interface RecLineInput { prod: string; qty: string | number; costo?: string | number; gam?: string }
+export interface RecLineInput { prod: string; qty: string | number; costo?: string | number; gam?: string; /** Precio de venta del embarque nuevo (solo admin). Vacío: el precio actual. */ precio?: string }
 export interface RecInput { productor: string; modalidad: Modalidad; lineas: RecLineInput[] }
 
 export function saveReceptionCmd(form: RecInput): Reception {
@@ -34,6 +35,10 @@ export function saveReceptionCmd(form: RecInput): Reception {
   if (ls.some((l) => Popt(l.prod) && P(l.prod).unidad !== 'kg' && !Number.isInteger(Number(l.qty)))) throw new Error('Las gamelas deben ser números enteros (sin decimales).');
   if (ls.some((l) => !Popt(l.prod) || !Number.isFinite(Number(l.costo || 0)) || Number(l.costo || 0) < 0 || !(P(l.prod).unidad === 'kg' ? round2(+l.qty) : Math.round(+l.qty))))
     throw new Error('Revisa productos, cantidades y costos.');
+  // precio de venta del embarque nuevo: solo el administrador lo fija al recibir
+  const precios = ls.map((l) => String(l.precio ?? '').trim());
+  if (precios.some(Boolean) && !isAdmin()) throw new Error('Solo el administrador fija el precio de venta de un embarque.');
+  precios.forEach((raw, i) => { if (raw && !P(ls[i].prod).envase && !priceOk(Number(raw))) throw new Error(`${P(ls[i].prod).nombre}: ${priceErr(raw)}`); });
   const t = now(), u = me()!;
   const r: Reception = { id: uid('r'), fecha: t, productor: form.productor, modalidad: form.modalidad, user: u.id, anulada: false, lineas: [], proveedor: { ...(PR(form.productor) as Reception['proveedor'] & object) }, emisor: { ...S.cfg } };
   const gam = ls.filter((l) => P(l.prod).envase).reduce((a, l) => a + Math.round(+l.qty), 0);
@@ -44,7 +49,10 @@ export function saveReceptionCmd(form: RecInput): Reception {
       r.gamelas = gam; r.gamelasLot = gl.id;
       S.moves.push({ id: uid('m'), lot: gl.id, prod: gamId(), tipo: 'recepción', qty: gam, user: u.id, fecha: t, motivo: 'Gamelas que llegaron con la recepción', ref: r.id });
     }
-    ls.filter((l) => !P(l.prod).envase).forEach((l) => {
+    ls.forEach((l, i) => {
+      if (P(l.prod).envase) return;
+      const nuevo = precios[i] ? Number(precios[i]) : 0;
+      if (nuevo) setGeneralPriceKeepingStock(P(l.prod), nuevo, t);
       const p = P(l.prod), q = p.unidad === 'kg' ? round2(+l.qty) : Math.round(+l.qty), gm = kgGam(p) ? gamInt(l.gam) : 0;
       const lot: Lot = { id: uid('l'), rec: r.id, prod: p.id, qty: q, costo: +(l.costo || 0) || 0, fecha: t, productor: form.productor, modalidad: form.modalidad, ...(r.comision != null ? { comision: r.comision } : {}), ...(gm ? { gamelas: gm } : {}) };
       S.lots.push(lot);
@@ -68,23 +76,41 @@ export function voidReceptionCmd(id: string, motivo: string): void {
 }
 
 /* ---------- merma ---------- */
-export function saveMermaCmd(prodId: string, src: Fuente, qtyRaw: string, gamRaw: string): void {
+/** Merma. Si el producto tiene más de un embarque con stock, el usuario elige de cuál sale (`lot`). */
+export function saveMermaCmd(prodId: string, src: Fuente, qtyRaw: string, gamRaw: string, lot = ''): void {
   workflowTransaction(() => {
     workflowUser();
     const S = ctx.S, s = SRC_LBL[src] ? src : 'consig', p = P(prodId), raw = Number(decIn(qtyRaw)), q = p.unidad === 'kg' ? round2(raw) : raw;
-    if (!Number.isFinite(q) || q <= 0 || (p.unidad !== 'kg' && !Number.isInteger(q)) || q > srcStock(p.id, s) + 1e-9) throw new Error('Ingresa una cantidad válida dentro del stock disponible.');
+    const open = openEmbarques(p.id, s);
+    if (lot && !open.some((l) => l.id === lot)) throw new Error('Ese embarque ya no tiene stock. Elige otro.');
+    if (!lot && open.length > 1) throw new Error('Elige de qué embarque sale la merma.');
+    const from = lot ? open.filter((l) => l.id === lot) : srcLots(p.id, s);
+    const disponible = lot ? lotStock(lot) : srcStock(p.id, s);
+    if (!Number.isFinite(q) || q <= 0 || (p.unidad !== 'kg' && !Number.isInteger(q)) || q > disponible + 1e-9) throw new Error('Ingresa una cantidad válida dentro del stock disponible.');
     const gm = kgGam(p) ? gamInt(gamRaw) : 0;
     if (!Number.isFinite(gm)) throw new Error('Las gamelas deben ser un número entero.');
     let remaining = q;
     const ref = uid('merma'), fecha = now(), first = S.moves.length;
-    for (const lot of srcLots(p.id, s)) {
-      const take = Math.min(remaining, Math.max(0, lotStock(lot.id)));
-      if (take > 0) { S.moves.push({ id: uid('m'), lot: lot.id, prod: p.id, tipo: 'merma', qty: -take, user: me()!.id, fecha, motivo: 'Merma registrada', ref }); remaining = round2(remaining - take); }
+    for (const l of from) {
+      const take = Math.min(remaining, Math.max(0, lotStock(l.id)));
+      if (take > 0) { S.moves.push({ id: uid('m'), lot: l.id, prod: p.id, tipo: 'merma', qty: -take, user: me()!.id, fecha, motivo: 'Merma registrada', ref }); remaining = round2(remaining - take); }
       if (remaining <= 0) break;
     }
     if (remaining > 1e-9) throw new Error('No se pudo asignar la merma a los lotes disponibles.');
     if (gm) S.moves[first].gamelas = gm;
   });
+}
+
+/**
+ * Nuevo precio general por la llegada de un embarque: los embarques con stock que seguían el precio general
+ * conservan el que tenían (se venden a su precio), y el embarque nuevo se vende al precio nuevo.
+ */
+function setGeneralPriceKeepingStock(p: Product, v: number, t: number): void {
+  if (v === p.precio) return;
+  for (const l of openEmbarques(p.id)) if (!hasOwnPrice(l)) l.precio = p.precio;
+  ctx.S.prices.push({ id: uid('pc'), prod: p.id, precio: v, desde: t, user: me()!.id });
+  audit('Cambio de precio', p.nombre + ' · embarque nuevo', clp(p.precio), clp(v));
+  p.precio = v;
 }
 
 /* ---------- inventario ---------- */
@@ -99,6 +125,39 @@ export function setPriceCmd(pid: string, raw: string): number {
     p.precio = v;
   }
   return v;
+}
+
+/**
+ * Precios por embarque. `general`: precio para los embarques nuevos y para los que no tienen precio propio.
+ * `lotes`: precio de cada embarque con stock; si es igual al general, el embarque vuelve a seguir el precio general.
+ */
+export function setEmbarquePricesCmd(pid: string, generalRaw: string, lotes: Record<string, string>): number {
+  requireAdmin('Solo el administrador cambia precios.');
+  const p = P(pid);
+  if (p.envase) throw new Error(`La garantía por gamela es fija: ${clp(GAMELA_PRECIO)}`);
+  const general = Number(String(generalRaw).trim());
+  if (!priceOk(general)) throw new Error(priceErr(String(generalRaw).trim()));
+  const open = openEmbarques(pid), t = now(), user = me()!.id;
+  const nuevos = Object.entries(lotes).map(([id, raw]) => {
+    const l = open.find((x) => x.id === id);
+    if (!l) throw new Error('Uno de los embarques ya no tiene stock. Vuelve a abrir el cambio de precio.');
+    const v = Number(String(raw).trim());
+    if (!priceOk(v)) throw new Error(`${embName(l)}: ${priceErr(String(raw).trim())}`);
+    return { l, antes: lotPrice(l), v };
+  });
+  if (general !== p.precio) {
+    ctx.S.prices.push({ id: uid('pc'), prod: pid, precio: general, desde: t, user });
+    audit('Cambio de precio', p.nombre + ' · precio general', clp(p.precio), clp(general));
+    p.precio = general;
+  }
+  for (const { l, antes, v } of nuevos) {
+    if (v === general) delete l.precio; else l.precio = v;
+    if (v !== antes) {
+      ctx.S.prices.push({ id: uid('pc'), prod: pid, lot: l.id, precio: v, desde: t, user });
+      audit('Cambio de precio', `${p.nombre} · ${embName(l)}`, clp(antes), clp(v));
+    }
+  }
+  return general;
 }
 
 export function adjustStockCmd(pid: string, lot: string, qtyRaw: string, motivo: string): void {

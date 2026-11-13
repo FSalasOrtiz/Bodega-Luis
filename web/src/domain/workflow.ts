@@ -2,6 +2,7 @@
    Todas las pasarelas tributarias y de pago están deliberadamente desconectadas. */
 import type { FiscalDoc, Payment, Sale } from '../types/model';
 import { audit } from './audit';
+import { lineBasePrice } from './embarques';
 import { comBase, P } from './catalog';
 import { ctx, isAdmin, me } from './ctx';
 import { resolveClient } from './credits';
@@ -106,7 +107,7 @@ export function registerSaleCommand(draft: SaleDraft): Sale {
   const old = S.sales.find((s) => s.commandKey === draft.key);
   if (old) { if (old.commandFingerprint !== fingerprint || old.vendedor !== u.id) throw new Error('La clave de operación ya corresponde a otra venta.'); return old; }
   if (draft.user !== u.id || draft.paymentConfirmed !== true) throw new Error('Confirma primero que recibiste el pago.');
-  if (!draft.items?.length || draft.items.some((i) => !P(i.prod) || (!i.precioEsp && P(i.prod).precio !== i.precio))) throw new Error('Los productos o precios cambiaron. Vuelve a revisar la venta.');
+  if (!draft.items?.length || draft.items.some((i) => !P(i.prod) || (!i.precioEsp && lineBasePrice(i) !== i.precio))) throw new Error('Los productos o precios cambiaron. Vuelve a revisar la venta.');
   // precio especial: el admin lo pone directo; un vendedor necesita la autorización de Luis para ese producto, cantidad y precio
   const especiales = draft.items.filter((i) => i.precioEsp).map((i) => {
     if (P(i.prod).envase || !Number.isSafeInteger(i.precio) || i.precio <= 0) throw new Error('Precio especial no válido.');

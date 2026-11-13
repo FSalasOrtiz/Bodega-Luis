@@ -4,6 +4,7 @@ import { CL, comBase, gamId, gamProd, P, Popt, U } from './catalog';
 import { ctx, isAdmin, me } from './ctx';
 import { abonoAvailable, creditBalance, findClientByName, validAbono } from './credits';
 import { clp, now, pctTxt, qtyFmt, searchText, uid } from './format';
+import { lineBasePrice } from './embarques';
 import { gamCalc } from './gamelas';
 import { receiptPayment } from './receipts';
 import { abonoReq, comReq, comRequestMatches, creditReq, openRequest, priceReq, priceRequestMatches } from './requests';
@@ -22,13 +23,17 @@ export function cartQty(pid: string, src?: Fuente): number {
 export const posLeft = (pid: string): number => (Popt(pid)?.envase ? prodStock(pid) - cartQty(pid) : srcStock(pid, posSrc()) - cartQty(pid, posSrc()));
 export const cartHasConsig = (): boolean => ctx.ui.cart.some((c) => c.src === 'consig' && !Popt(c.prod)?.envase);
 export function saleCom(): number { if (isAdmin()) return comBase(); const r = comReq(ctx.ui.comReq); return comRequestMatches(r, me()?.id) ? r!.pct : comBase(); }
+/** Precio normal de la línea: el del embarque elegido o, sin embarque, el general del producto. */
+export const cartBasePrice = lineBasePrice;
 export function cartPrice(c: CartLine): number {
   const p = Popt(c.prod);
   if (!p) return 0;
   if (c.precioAdmin && isAdmin()) return c.precioAdmin;
   const r = priceReq(c.priceReq);
-  return priceRequestMatches(r, c, me()?.id) ? r!.precio : p.precio;
+  return priceRequestMatches(r, c, me()?.id) ? r!.precio : cartBasePrice(c);
 }
+/** Cantidad ya agregada al carrito desde un embarque. */
+export const cartLotQty = (lot: string): number => ctx.ui.cart.filter((c) => c.lot === lot).reduce((a, c) => a + c.qty, 0);
 export function filteredProducts(q: string, fam: string, adminAll = false): Product[] {
   const s = searchText(q.trim());
   return ctx.S.products.filter((p) => (adminAll || (p.activo && !p.envase)) && (fam === 'Todas' || p.familia === fam) &&
@@ -37,8 +42,8 @@ export function filteredProducts(q: string, fam: string, adminAll = false): Prod
 /** Líneas listas para cobrar: precio vigente o especial autorizado, más la línea de gamelas. */
 export function checkoutItems(): CheckoutItem[] {
   const items: CheckoutItem[] = ctx.ui.cart.map((c) => {
-    const precio = cartPrice(c), esp = precio !== Popt(c.prod)?.precio;
-    return { prod: c.prod, qty: c.qty, ...(c.src ? { src: c.src } : {}), ...(c.gam ? { gam: c.gam } : {}), precio, ...(esp ? { precioEsp: true, priceReq: c.priceReq || '' } : {}) };
+    const precio = cartPrice(c), esp = precio !== cartBasePrice(c);
+    return { prod: c.prod, qty: c.qty, ...(c.src ? { src: c.src } : {}), ...(c.lot ? { lot: c.lot } : {}), ...(c.gam ? { gam: c.gam } : {}), precio, ...(esp ? { precioEsp: true, priceReq: c.priceReq || '' } : {}) };
   });
   const g = gamCalc();
   if (g.net) items.push({ prod: gamId(), qty: g.net, precio: gamProd().precio });
@@ -91,9 +96,10 @@ export function requestPriceCmd(c: CartLine, v: number): string {
   return workflowTransaction(() => {
     const old = priceReq(c.priceReq);
     if (old?.estado === 'pendiente') { old.estado = 'cancelada'; old.resueltoEn = now(); }
-    const r = { id: uid('pq'), user: me()!.id, prod: p.id, qty: c.qty, precioNormal: p.precio, precio: v, fecha: now(), estado: 'pendiente' as const, resueltoPor: '', resueltoEn: 0, saleId: '' };
+    const normal = cartBasePrice(c);
+    const r = { id: uid('pq'), user: me()!.id, prod: p.id, ...(c.lot ? { lot: c.lot } : {}), qty: c.qty, precioNormal: normal, precio: v, fecha: now(), estado: 'pendiente' as const, resueltoPor: '', resueltoEn: 0, saleId: '' };
     ctx.S.priceRequests.push(r);
-    audit('Pide precio especial', p.nombre, clp(p.precio), clp(v) + ' · ' + qtyFmt(c.qty, p.unidad));
+    audit('Pide precio especial', p.nombre, clp(normal), clp(v) + ' · ' + qtyFmt(c.qty, p.unidad));
     return r.id;
   });
 }

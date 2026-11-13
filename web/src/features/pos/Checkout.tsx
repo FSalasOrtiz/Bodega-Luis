@@ -12,6 +12,8 @@ import { receiptPayment } from '../../domain/receipts';
 import { itemTotal } from '../../domain/sales';
 import { invoiceRecipientError } from '../../domain/rut';
 import { lineName } from '../../domain/catalog';
+import { embName, findLot, openEmbarques } from '../../domain/embarques';
+import { lotSrc } from '../../domain/stock';
 import { paymentPlan, registerSaleCommand, workflowUser, type SaleDraft } from '../../domain/workflow';
 import { POS_DEFAULT } from '../../domain/pos';
 import { store } from '../../state/store';
@@ -79,7 +81,7 @@ function Checkout({ draft, credit, rest }: { draft: SaleDraft; credit: { monto: 
       <h2>Revisar y confirmar venta</h2>
       <p className="muted">Todavía no se ha registrado la venta ni se ha descontado stock.</p>
       <div className="scroll"><table className="tbl"><thead><tr><th>Producto</th><th>Cantidad</th><th className="right">Importe</th></tr></thead>
-        <tbody>{draft.items.map((i, k) => <tr key={k}><td>{lineName(i)}</td><td>{qtyFmt(i.qty, P(i.prod).unidad)} × {clp(i.precio)}</td><td className="right num">{clp(itemTotal(i))}</td></tr>)}</tbody></table></div>
+        <tbody>{draft.items.map((i, k) => <tr key={k}><td>{lineName(i)}{embOf(i.lot)}</td><td>{qtyFmt(i.qty, P(i.prod).unidad)} × {clp(i.precio)}</td><td className="right num">{clp(itemTotal(i))}</td></tr>)}</tbody></table></div>
       {g && <p><b>Gamelas:</b> se lleva {g.lleva}, trae {g.trae} → {net > 0 ? 'se cobran ' + net : net < 0 ? 'se descuentan ' + -net : 'sin cobro'}</p>}
       {draft.comision != null && <p><b>Comisión consignación:</b> {pctTxt(draft.comision)}{draft.comision !== comBase() ? ' · autorizada por Luis solo para esta venta' : ''}</p>}
       <p><b>Documento:</b> {draft.documento === 'factura' ? `Factura · ${draft.receptor?.razonSocial} · RUT ${draft.receptor?.rut} (la emite la contadora)` : 'Boleta'}</p>
@@ -90,4 +92,10 @@ function Checkout({ draft, credit, rest }: { draft: SaleDraft; credit: { monto: 
       <div className="acts"><button className="btn ghost" disabled={busy} onClick={closeModal}>Volver y corregir</button><button className="btn pri" id="checkout-submit" disabled={busy} onClick={() => void commit()}>{busy ? 'Registrando…' : 'Registrar venta'}</button></div>
     </>
   );
+}
+
+/** Embarque de la línea, solo si el producto tiene más de uno con stock. */
+function embOf(lot: string | undefined): string {
+  const l = findLot(lot);
+  return l && openEmbarques(l.prod, lotSrc(l)).length > 1 ? ` · ${embName(l)}` : '';
 }

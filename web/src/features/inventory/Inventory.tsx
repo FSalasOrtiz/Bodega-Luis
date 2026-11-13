@@ -6,7 +6,8 @@ import { kgGam, P, PR, productFamilies, U } from '../../domain/catalog';
 import { ctx, isAdmin } from '../../domain/ctx';
 import { clp, DAY, dayKey, fdate, fdt, now, qtyFmt, today } from '../../domain/format';
 import { kgGamTxt } from '../../domain/gamelas';
-import { adjustStockCmd, saveFamilyCmd, saveProductCmd, setPriceCmd, type ProductInput } from '../../domain/operations';
+import { adjustStockCmd, saveFamilyCmd, saveProductCmd, setEmbarquePricesCmd, type ProductInput } from '../../domain/operations';
+import { embLabel, hasOwnPrice, lotPrice, openEmbarques, openPrices } from '../../domain/embarques';
 import { filteredProducts } from '../../domain/pos';
 import { lotSrc, lotStock, prodLots, prodStock, SRC_LBL, srcStock } from '../../domain/stock';
 import type { Unidad } from '../../types/model';
@@ -36,7 +37,7 @@ export function Inventory() {
                 {admin && <td className="muted nowrap">{p.sku}</td>}
                 <td><b>{p.nombre}</b>{!p.activo && <> <span className="pill mute">Inactivo</span></>}{kgGam(p) && <><br /><small className="muted">{kgGamTxt(p.id)}</small></>}</td>
                 {admin && <><td>{p.familia === 'Otros' ? 'Sin clasificar' : p.familia}</td><td>{p.unidad}{p.unidad === 'kg' && p.pesoCaja ? ` (caja ${p.pesoCaja} kg)` : ''}</td></>}
-                <td className="right num"><b>{clp(p.precio)}</b>{p.unidad === 'kg' ? '/kg' : ''}</td>
+                <td className="right num"><PriceCell pid={p.id} /></td>
                 {(['consig', 'directa'] as const).map((x) => { const v = p.envase ? null : srcStock(p.id, x); return <td key={x} className="right num">{v == null ? '—' : v <= 0 ? <span className="muted">0</span> : qtyFmt(v, p.unidad)}</td>; })}
                 <td className="right num">{s <= 0 ? <span className="pill bad">0</span> : qtyFmt(s, p.unidad)}</td>
                 {admin && <><td className="right num">{qtyFmt(sum('recepción'), p.unidad)}</td><td className="right num">{qtyFmt(sum('venta'), p.unidad)}</td>
@@ -54,43 +55,76 @@ export function openProductSheet(pid: string): void { openModal(() => <ProductSh
 function ProductSheet({ pid }: { pid: string }) {
   const [lotPage, setLotPage] = useState(1), [mvPage, setMvPage] = useState(1);
   const p = P(pid), admin = isAdmin();
-  const lots = prodLots(pid).filter((l) => lotStock(l.id) > 0), lotPg = paginate(lots, lotPage);
+  const lots = prodLots(pid).filter((l) => lotStock(l.id) > 0), lotPg = paginate(lots, lotPage), multi = !p.envase && openPrices(pid).length > 1;
   const mvPg = paginate(ctx.S.moves.filter((m) => m.prod === pid).sort((a, b) => b.fecha - a.fecha), mvPage);
   return (
     <>
       <p className="muted" style={{ margin: 0 }}>{p.sku} · {p.familia} · calibre/variedad {p.calibre}</p><h2>{p.nombre}</h2>
       <div className="grid g2" style={{ margin: '14px 0' }}>
-        <div className="card kpi" style={{ background: 'var(--panel)' }}><div className="lbl">Precio</div><div className="val num" style={{ fontSize: 28 }}>{clp(p.precio)}{p.unidad === 'kg' ? '/kg' : ''}</div></div>
+        <div className="card kpi" style={{ background: 'var(--panel)' }}><div className="lbl">{multi ? 'Precio para embarques nuevos' : 'Precio'}</div><div className="val num" style={{ fontSize: 28 }}>{clp(p.precio)}{p.unidad === 'kg' ? '/kg' : ''}</div>
+          {multi && <div className="sub">Los embarques con stock tienen precios distintos: ver la tabla.</div>}</div>
         <div className="card kpi" style={{ background: 'var(--panel)' }}><div className="lbl">Stock</div><div className="val num" style={{ fontSize: 28 }}>{qtyFmt(prodStock(pid), p.unidad)}</div>
           {!p.envase && <div className="sub">Consignación {qtyFmt(srcStock(pid, 'consig'), p.unidad)} · Compra directa {qtyFmt(srcStock(pid, 'directa'), p.unidad)}</div>}{kgGam(p) && <div className="sub">{kgGamTxt(pid)}</div>}</div>
       </div>
-      <h3 style={{ fontSize: 15, margin: '6px 0' }}>Lotes en bodega (se vende primero el más antiguo)</h3>
-      <div className="scroll"><table className="tbl m-cards"><thead><tr><th>Ingreso</th><th>Productor</th><th>Stock</th><th className="right">Queda</th><th className="right">Días</th></tr></thead>
+      <h3 style={{ fontSize: 15, margin: '6px 0' }}>{p.envase ? 'Lotes en bodega' : 'Embarques en bodega'}</h3>
+      <div className="scroll"><table className="tbl m-cards"><thead><tr><th>{p.envase ? 'Ingreso' : 'Embarque'}</th><th>Productor</th><th>Stock</th>{!p.envase && <th className="right">Precio</th>}<th className="right">Queda</th><th className="right">Días</th></tr></thead>
         <tbody>{lotPg.rows.map((l) => { const d = Math.floor((now() - l.fecha) / DAY); return (
-          <tr key={l.id}><td className="when">{fdate(l.fecha)}</td><td>{PR(l.productor).nombre}</td><td>{p.envase ? l.modalidad : SRC_LBL[lotSrc(l)] + (['consignación', 'compra'].includes(l.modalidad) ? '' : ' · ' + l.modalidad)}</td><td className="right num">{qtyFmt(lotStock(l.id), p.unidad)}</td><td className="right"><span className={`pill ${d >= 4 ? 'bad' : d >= 2 ? 'warn' : 'ok'}`}>{d}</span></td></tr>
-        ); })}{!lots.length && <tr><td colSpan={5} className="muted">Sin stock</td></tr>}</tbody></table></div>
+          <tr key={l.id}><td className="when">{p.envase ? fdate(l.fecha) : embLabel(l)}</td><td>{PR(l.productor).nombre}</td><td>{p.envase ? l.modalidad : SRC_LBL[lotSrc(l)] + (['consignación', 'compra'].includes(l.modalidad) ? '' : ' · ' + l.modalidad)}</td>
+            {!p.envase && <td className="right num">{clp(lotPrice(l))}{hasOwnPrice(l) ? '' : <small className="muted"> general</small>}</td>}
+            <td className="right num">{qtyFmt(lotStock(l.id), p.unidad)}</td><td className="right"><span className={`pill ${d >= 4 ? 'bad' : d >= 2 ? 'warn' : 'ok'}`}>{d}</span></td></tr>
+        ); })}{!lots.length && <tr><td colSpan={p.envase ? 5 : 6} className="muted">Sin stock</td></tr>}</tbody></table></div>
       <Pager pg={lotPg} onPage={setLotPage} label="Páginas de lotes" />
       {admin && <><h3 style={{ fontSize: 15, margin: '14px 0 6px' }}>Movimientos</h3>
         <div className="scroll"><table className="tbl"><tbody>{mvPg.rows.map((m) => <tr key={m.id}><td className="when">{fdt(m.fecha)}</td><td>{m.tipo}</td><td>{U(m.user).nombre}</td><td className="right num" style={{ color: m.qty < 0 ? 'var(--bad)' : 'var(--g700)' }}>{m.qty > 0 ? '+' : ''}{qtyFmt(m.qty, p.unidad)}</td></tr>)}</tbody></table></div>
         <Pager pg={mvPg} onPage={setMvPage} label="Páginas de movimientos del producto" /></>}
-      <div className="acts">{admin && <><button className="btn ghost" onClick={() => openAdjustStock(pid)}>Ajustar stock</button><button className="btn ghost" onClick={() => openEditProduct(pid)}>Editar</button>{!p.envase && <button className="btn" onClick={() => openChangePrice(pid)}>Cambiar precio</button>}</>}<button className="btn pri" onClick={closeModal}>Cerrar</button></div>
+      <div className="acts">{admin && <><button className="btn ghost" onClick={() => openAdjustStock(pid)}>Ajustar stock</button><button className="btn ghost" onClick={() => openEditProduct(pid)}>Editar</button>{!p.envase && <button className="btn" onClick={() => openChangePrice(pid)}>{multi ? 'Precios por embarque' : 'Cambiar precio'}</button>}</>}<button className="btn pri" onClick={closeModal}>Cerrar</button></div>
     </>
   );
 }
 
 export function openChangePrice(pid: string): void { openModal(() => <ChangePrice pid={pid} />); }
 function ChangePrice({ pid }: { pid: string }) {
-  const p = P(pid);
-  const [v, setV] = useState(String(p.precio));
-  const save = async () => { const r = await exec(() => setPriceCmd(pid, v), (nv) => `Nuevo precio ${p.nombre}: ${clp(nv)}`); if (r !== undefined) closeModal(); };
-  return (
+  const p = P(pid), unit = p.unidad === 'kg' ? '/kg' : '/gamela', open = openEmbarques(pid);
+  const [general, setGeneral] = useState(String(p.precio));
+  const [rows, setRows] = useState<Record<string, string>>(() => Object.fromEntries(open.map((l) => [l.id, String(lotPrice(l))])));
+  const multi = open.length > 1;
+  const save = async () => {
+    // con un solo embarque (o ninguno) el precio aplica a todo el stock
+    const lotes = multi ? rows : Object.fromEntries(open.map((l) => [l.id, general]));
+    const r = await exec(() => setEmbarquePricesCmd(pid, general, lotes), (nv) => `Precios de ${p.nombre} guardados · embarques nuevos ${clp(nv)}`);
+    if (r !== undefined) closeModal();
+  };
+  if (!multi) return (
     <>
-      <h2>Cambiar precio</h2><p className="muted">{p.nombre} · actual {clp(p.precio)}{p.unidad === 'kg' ? '/kg' : '/gamela'}</p>
-      <div className="f"><label htmlFor="np">Nuevo precio {p.unidad === 'kg' ? 'por kg' : 'por gamela'}</label><input id="np" className="in num" type="number" inputMode="numeric" value={v} onChange={(e) => setV(e.target.value)} autoFocus onFocus={(e) => e.target.select()} style={{ fontSize: 22, fontWeight: 700 }} /></div>
-      <p className="muted" style={{ fontSize: 12 }}>Los vendedores verán el aviso en la franja de precios. Las ventas anteriores mantienen su precio.</p>
+      <h2>Cambiar precio</h2><p className="muted">{p.nombre} · actual {clp(open[0] ? lotPrice(open[0]) : p.precio)}{unit}</p>
+      <div className="f"><label htmlFor="np">Nuevo precio {p.unidad === 'kg' ? 'por kg' : 'por gamela'}</label><input id="np" className="in num" type="number" inputMode="numeric" value={general} onChange={(e) => setGeneral(e.target.value)} autoFocus onFocus={(e) => e.target.select()} style={{ fontSize: 22, fontWeight: 700 }} /></div>
+      <p className="muted" style={{ fontSize: 12 }}>Aplica al stock actual y a los embarques que lleguen. Las ventas anteriores mantienen su precio.</p>
       <div className="acts"><button className="btn ghost" onClick={closeModal}>Cancelar</button><button className="btn pri" onClick={() => void save()}>Guardar</button></div>
     </>
   );
+  return (
+    <>
+      <h2>Precios por embarque</h2><p className="muted">{p.nombre}. Cada embarque se vende a su precio; en la venta se elige de cuál sale.</p>
+      <div className="rows emb-prices">{open.map((l) => (
+        <div key={l.id}><div className="grow"><b>{embLabel(l)}</b><span>{SRC_LBL[lotSrc(l)]} · quedan {qtyFmt(lotStock(l.id), p.unidad)}</span></div>
+          <label className="sr-only" htmlFor={`ep-${l.id}`}>Precio {embLabel(l)}</label>
+          <input id={`ep-${l.id}`} className="in num" type="number" inputMode="numeric" value={rows[l.id] ?? ''} onChange={(e) => setRows((x) => ({ ...x, [l.id]: e.target.value }))} onFocus={(e) => e.target.select()} /></div>
+      ))}</div>
+      <div className="f" style={{ marginTop: 14 }}><label htmlFor="np">Precio para los embarques que lleguen ({unit.slice(1)})</label>
+        <input id="np" className="in num" type="number" inputMode="numeric" value={general} onChange={(e) => setGeneral(e.target.value)} onFocus={(e) => e.target.select()} />
+        <small className="muted">Si un embarque queda con este mismo precio, seguirá los próximos cambios del precio general.</small></div>
+      <button type="button" className="btn ghost sm" onClick={() => setRows(Object.fromEntries(open.map((l) => [l.id, general])))}>Usar {general ? clp(Number(general) || 0) : 'este precio'} en todos los embarques</button>
+      <p className="muted" style={{ fontSize: 12 }}>Las ventas anteriores mantienen su precio.</p>
+      <div className="acts"><button className="btn ghost" onClick={closeModal}>Cancelar</button><button className="btn pri" onClick={() => void save()}>Guardar precios</button></div>
+    </>
+  );
+}
+
+/** Precio en la tabla de inventario: el general, o el rango si los embarques con stock tienen precios distintos. */
+function PriceCell({ pid }: { pid: string }) {
+  const p = P(pid), u = p.unidad === 'kg' ? '/kg' : '', ps = p.envase ? [] : openPrices(pid);
+  if (ps.length > 1) return <><b>{clp(ps[0])} – {clp(ps[ps.length - 1])}</b>{u}<br /><small className="muted">según embarque</small></>;
+  return <><b>{clp(ps[0] ?? p.precio)}</b>{u}</>;
 }
 
 export function openAdjustStock(pid: string): void {
@@ -105,7 +139,7 @@ function AdjustStock({ pid }: { pid: string }) {
     <>
       <h2>Ajustar stock</h2><p className="muted">{p.nombre} · stock {qtyFmt(prodStock(pid), p.unidad)}. Usa negativo para descontar.</p>
       <div className="f"><label htmlFor="al">Lote</label><select id="al" className="in" value={lot} onChange={(e) => setLot(e.target.value)}>
-        {lots.map((l) => <option key={l.id} value={l.id}>{fdate(l.fecha)} · {p.envase ? '' : SRC_LBL[lotSrc(l)] + ' · '}{PR(l.productor).nombre} · {qtyFmt(lotStock(l.id), p.unidad)}</option>)}</select></div>
+        {lots.map((l) => <option key={l.id} value={l.id}>{p.envase ? fdate(l.fecha) : embLabel(l)} · {p.envase ? '' : SRC_LBL[lotSrc(l)] + ' · '}{PR(l.productor).nombre} · {qtyFmt(lotStock(l.id), p.unidad)}</option>)}</select></div>
       <div className="f"><label htmlFor="aq">Cantidad (+/−)</label><input id="aq" className="in num" type="number" value={q} onChange={(e) => setQ(e.target.value)} /></div>
       <div className="f"><label htmlFor="am">Motivo (obligatorio)</label><input id="am" className="in" placeholder="Ej: conteo físico" value={m} onChange={(e) => setM(e.target.value)} /></div>
       <div className="acts"><button className="btn ghost" onClick={closeModal}>Cancelar</button><button className="btn pri" onClick={() => void save()}>Registrar ajuste</button></div>
@@ -127,7 +161,7 @@ function EditProduct({ pid }: { pid: string }) {
       <div className="f"><label htmlFor="e_nom">Nombre</label><input id="e_nom" className="in" value={f.nombre} placeholder="Tomate calibre 9" onChange={(e) => set({ nombre: e.target.value })} /></div>
       <div className="row"><div className="f"><label htmlFor="e_cal">Calibre / variedad</label><input id="e_cal" className="in" value={f.calibre} onChange={(e) => set({ calibre: e.target.value })} /></div>
         <div className="f"><label htmlFor="e_uni">Unidad</label><select id="e_uni" className="in" value={f.unidad} onChange={(e) => set({ unidad: e.target.value as Unidad })}><option value="gamela">Gamela</option><option value="kg">Kg</option></select></div></div>
-      <div className="row"><div className="f"><label htmlFor="e_pre">Precio de venta ({f.unidad === 'kg' ? 'por kg' : 'por gamela'})</label><input id="e_pre" className="in num" type="number" inputMode="numeric" value={f.precio} onChange={(e) => set({ precio: e.target.value })} /></div></div>
+      <div className="row"><div className="f"><label htmlFor="e_pre">Precio de venta ({f.unidad === 'kg' ? 'por kg' : 'por gamela'})</label><input id="e_pre" className="in num" type="number" inputMode="numeric" value={f.precio} onChange={(e) => set({ precio: e.target.value })} />{pid && !p!.envase && openPrices(pid).length > 1 && <small className="muted">Precio general. Los embarques con precio propio lo mantienen: cámbialos en Precios por embarque.</small>}</div></div>
       <div className="row"><label className="f" style={{ flexDirection: 'row', alignItems: 'center' }}><input id="e_gam" type="checkbox" checked={f.usaGamela} onChange={(e) => set({ usaGamela: e.target.checked })} /> Usa gamela retornable</label>
         <label className="f" style={{ flexDirection: 'row', alignItems: 'center' }}><input id="e_act" type="checkbox" checked={f.activo} onChange={(e) => set({ activo: e.target.checked })} /> Activo</label></div>
       {pid && <p className="muted" style={{ fontSize: 12 }}>Stock actual: <b>{qtyFmt(prodStock(pid), p!.unidad)}</b>. El stock no se edita aquí: se corrige con un ajuste con motivo.</p>}

@@ -106,6 +106,8 @@ export interface Lot {
   fuente?: Fuente;
   comision?: number;
   gamelas?: number;
+  /** Precio de venta propio del embarque. Sin él, el embarque se vende al precio general del producto. */
+  precio?: number;
 }
 
 export type MoveTipo = 'recepción' | 'venta' | 'merma' | 'ajuste' | 'anulación' | 'compra gamelas';
@@ -337,6 +339,8 @@ export interface Liquidation {
 export interface PriceChange {
   id?: string;
   prod: string;
+  /** Embarque (lote) cuyo precio cambió; sin él, es el precio general del producto. */
+  lot?: string;
   precio: number;
   desde: Ms;
   user: string;
@@ -425,6 +429,8 @@ export interface CreditRequest extends RequestBase {
 
 export interface PriceRequest extends RequestBase {
   prod: string;
+  /** Embarque de la línea (el precio normal es el de ese embarque). */
+  lot?: string;
   qty: number;
   precio: number;
   precioNormal?: number;
@@ -538,6 +544,8 @@ export type CollectionName = (typeof COLLECTIONS)[number];
 export interface CartLine {
   prod: string;
   qty: number;
+  /** Embarque (lote) del que sale la línea: define el precio normal. */
+  lot?: string;
   src?: Fuente;
   gam?: number;
   priceReq?: string;

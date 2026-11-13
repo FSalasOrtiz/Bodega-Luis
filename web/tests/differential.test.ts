@@ -20,6 +20,7 @@ import { moneyEntries, revenueEntries } from '../src/domain/sales';
 import { registerSaleCommand, reverseSaleCommand, type SaleDraft } from '../src/domain/workflow';
 import { approveCloseCmd, closeShiftCmd, recoverShortageCmd, saveMermaCmd, saveReceptionCmd } from '../src/domain/operations';
 import { POS_DEFAULT } from '../src/domain/pos';
+import { openEmbarques } from '../src/domain/embarques';
 
 const ROOT = resolve(__dirname, '../..');
 const T0 = new Date('2026-11-07T21:30:00').getTime();
@@ -166,9 +167,9 @@ describe('Dominio TS ≡ prototipo', () => {
     runProto(`recForm={productor:'pr1',modalidad:'consignación',lineas:[{prod:${JSON.stringify(p.id)},qty:'12',costo:''}]};toast=()=>{};recDoc=()=>{};saveRec()`);
     saveReceptionCmd({ productor: 'pr1', modalidad: 'consignación', lineas: [{ prod: p.id, qty: '12', costo: '' }] });
     expect(prodStock(p.id)).toBe(runProto(`prodStock(${JSON.stringify(p.id)})`));
-    // merma de 5 (FIFO por lotes de consignación)
+    // merma de 5: el prototipo la saca FIFO; ahora el usuario elige el embarque. Eligiendo el más antiguo, el resultado es el mismo.
     runProto(`mermaF={prod:${JSON.stringify(p.id)},qty:'5',src:'consig'};saveMerma()`);
-    saveMermaCmd(p.id, 'consig', '5', '');
+    saveMermaCmd(p.id, 'consig', '5', '', openEmbarques(p.id, 'consig')[0]?.id || '');
     const mermas = (mv: State['moves']) => mv.filter((m) => m.tipo === 'merma').slice(-3).map((m) => [m.lot, m.qty]);
     expect(mermas(ctx.S.moves)).toEqual(mermas(runProto<State['moves']>('S.moves')));
     // cierre de turno de Samuel (todas sus ventas sin cerrar)

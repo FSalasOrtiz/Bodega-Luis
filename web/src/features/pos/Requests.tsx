@@ -4,7 +4,7 @@ import { toast } from '../../components/toast';
 import { comBase, P } from '../../domain/catalog';
 import { isAdmin } from '../../domain/ctx';
 import { clp, decIn, pctTxt, qtyFmt } from '../../domain/format';
-import { cartHasConsig, cartPrice, requestCreditCmd, requestPriceCmd, saveComCmd } from '../../domain/pos';
+import { cartBasePrice, cartHasConsig, cartPrice, requestCreditCmd, requestPriceCmd, saveComCmd } from '../../domain/pos';
 import { store } from '../../state/store';
 import { exec } from '../../app/actions';
 
@@ -20,13 +20,13 @@ export function openPriceForm(i: number): void {
   openModal(() => <PriceForm i={i} />);
 }
 function PriceForm({ i }: { i: number }) {
-  const c = store.get().ui.cart[i], p = P(c.prod), u = p.unidad === 'kg' ? 'kg' : 'gamela', cur = cartPrice(c);
-  const [raw, setRaw] = useState(cur !== p.precio ? String(cur) : '');
+  const c = store.get().ui.cart[i], p = P(c.prod), u = p.unidad === 'kg' ? 'kg' : 'gamela', cur = cartPrice(c), normal = cartBasePrice(c);
+  const [raw, setRaw] = useState(cur !== normal ? String(cur) : '');
   const v = parseInt(raw.replace(/\D/g, '')) || 0;
   const save = async (reset = false) => {
     if (isAdmin() && reset) { store.setUi((s) => ({ cart: s.cart.map((x, j) => (j === i ? { ...x, precioAdmin: undefined } : x)) })); closeModal(); return; }
     if (!(v > 0)) return toast('Ingresa el nuevo precio.');
-    if (v === p.precio) return toast('Es el mismo precio normal.');
+    if (v === normal) return toast('Es el mismo precio normal.');
     if (isAdmin()) { store.setUi((s) => ({ cart: s.cart.map((x, j) => (j === i ? { ...x, precioAdmin: v } : x)) })); closeModal(); toast('Precio especial aplicado solo a esta venta.'); return; }
     const id = await exec(() => requestPriceCmd(c, v), 'Solicitud enviada. Espera la respuesta de Luis.');
     if (id) { store.setUi((s) => ({ cart: s.cart.map((x, j) => (j === i ? { ...x, priceReq: id } : x)) })); closeModal(); }
@@ -34,10 +34,10 @@ function PriceForm({ i }: { i: number }) {
   return (
     <>
       <h2>Cambiar precio</h2>
-      <p className="muted">{p.nombre} · {qtyFmt(c.qty, p.unidad)}. Precio normal {clp(p.precio)} por {u}. Solo vale para esta venta.</p>
+      <p className="muted">{p.nombre} · {qtyFmt(c.qty, p.unidad)}. Precio normal {clp(normal)} por {u}. Solo vale para esta venta.</p>
       <div className="f"><label htmlFor="pe-precio">Nuevo precio por {u}</label>
         <input id="pe-precio" className="in num" type="text" inputMode="numeric" autoComplete="off" autoFocus value={raw} onChange={(e) => setRaw(e.target.value)} />
-        <small className="muted" id="pe-total">{v ? `Total de la línea: ${clp(Math.round(c.qty * v))} (normal ${clp(Math.round(c.qty * p.precio))})` : ''}</small></div>
+        <small className="muted" id="pe-total">{v ? `Total de la línea: ${clp(Math.round(c.qty * v))} (normal ${clp(Math.round(c.qty * normal))})` : ''}</small></div>
       {!isAdmin() && <p className="muted">Luis recibe el aviso y la venta queda en espera hasta que responda.</p>}
       <div className="acts"><button className="btn ghost" onClick={closeModal}>Cancelar</button>
         {isAdmin() && c.precioAdmin && <button className="btn ghost" onClick={() => void save(true)}>Volver al precio normal</button>}
