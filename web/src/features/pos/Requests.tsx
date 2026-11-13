@@ -7,6 +7,7 @@ import { clp, decIn, pctTxt, qtyFmt } from '../../domain/format';
 import { cartBasePrice, cartHasConsig, cartPrice, requestCreditCmd, requestPriceCmd, saveComCmd } from '../../domain/pos';
 import { store } from '../../state/store';
 import { exec } from '../../app/actions';
+import type { CartLine } from '../../types/model';
 
 export async function requestCredit(): Promise<void> {
   const id = await exec(() => requestCreditCmd(), 'Solicitud enviada. Espera la respuesta de Luis.');
@@ -19,17 +20,27 @@ export function openPriceForm(i: number): void {
   if (!c || P(c.prod).envase) return;
   openModal(() => <PriceForm i={i} />);
 }
-function PriceForm({ i }: { i: number }) {
-  const c = store.get().ui.cart[i], p = P(c.prod), u = p.unidad === 'kg' ? 'kg' : 'gamela', cur = cartPrice(c), normal = cartBasePrice(c);
+/**
+ * Precio especial para una línea que todavía no está en el carrito (desde la ventana de cantidad).
+ * La línea entra al carrito solo al aplicar el precio o enviar la solicitud; si se cancela, no se agrega.
+ */
+export function openNewLinePriceForm(line: CartLine): void {
+  if (P(line.prod).envase) return;
+  openModal(() => <PriceForm draft={line} />);
+}
+function PriceForm({ i = -1, draft }: { i?: number; draft?: CartLine }) {
+  const c = draft ?? store.get().ui.cart[i], p = P(c.prod), u = p.unidad === 'kg' ? 'kg' : 'gamela', cur = cartPrice(c), normal = cartBasePrice(c);
   const [raw, setRaw] = useState(cur !== normal ? String(cur) : '');
   const v = parseInt(raw.replace(/\D/g, '')) || 0;
+  // línea nueva: se agrega con el cambio; línea existente: se modifica en su lugar
+  const apply = (ch: Partial<CartLine>) => store.setUi((s) => ({ cart: draft ? [...s.cart, { ...draft, ...ch }] : s.cart.map((x, j) => (j === i ? { ...x, ...ch } : x)) }));
   const save = async (reset = false) => {
-    if (isAdmin() && reset) { store.setUi((s) => ({ cart: s.cart.map((x, j) => (j === i ? { ...x, precioAdmin: undefined } : x)) })); closeModal(); return; }
+    if (isAdmin() && reset) { apply({ precioAdmin: undefined }); closeModal(); return; }
     if (!(v > 0)) return toast('Ingresa el nuevo precio.');
     if (v === normal) return toast('Es el mismo precio normal.');
-    if (isAdmin()) { store.setUi((s) => ({ cart: s.cart.map((x, j) => (j === i ? { ...x, precioAdmin: v } : x)) })); closeModal(); toast('Precio especial aplicado solo a esta venta.'); return; }
+    if (isAdmin()) { apply({ precioAdmin: v }); closeModal(); toast('Precio especial aplicado solo a esta venta.'); return; }
     const id = await exec(() => requestPriceCmd(c, v), 'Solicitud enviada. Espera la respuesta de Luis.');
-    if (id) { store.setUi((s) => ({ cart: s.cart.map((x, j) => (j === i ? { ...x, priceReq: id } : x)) })); closeModal(); }
+    if (id) { apply({ priceReq: id }); closeModal(); }
   };
   return (
     <>

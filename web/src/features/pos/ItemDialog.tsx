@@ -10,7 +10,8 @@ import { lineTotal } from '../../domain/sales';
 import { lotStock, scaleOver, SRC_LBL } from '../../domain/stock';
 import { store } from '../../state/store';
 import { go } from '../../app/actions';
-import { openPriceForm } from './Requests';
+import { openNewLinePriceForm } from './Requests';
+import type { CartLine } from '../../types/model';
 
 /** Ventana de cantidad: gamelas enteras o kilos (coma decimal). Al agregar, muestra lo que queda. */
 export function openItem(pid: string): void {
@@ -38,10 +39,13 @@ function ItemDialog({ pid }: { pid: string }) {
   const add = (withPrice = false) => {
     if (err) return;
     const q = p.unidad === 'kg' ? round2(qty) : Math.round(qty), gm = kgGam(p) ? gamInt(gam) || 0 : 0;
-    store.setUi((u) => ({ cart: [...u.cart, { prod: p.id, qty: q, ...(p.envase ? {} : { src }), ...(emb ? { lot: emb.l.id } : {}), ...(gm ? { gam: gm } : {}) }] }));
+    const line: CartLine = { prod: p.id, qty: q, ...(p.envase ? {} : { src }), ...(emb ? { lot: emb.l.id } : {}), ...(gm ? { gam: gm } : {}) };
+    const priced = withPrice && !p.envase;
+    // con otro precio, la línea entra al carrito solo si se confirma el precio: cancelar no la agrega
+    if (!priced) store.setUi((u) => ({ cart: [...u.cart, line] }));
     closeModal();
     if (store.get().view !== 'pos') go('pos');
-    if (withPrice && !p.envase) { openPriceForm(store.get().ui.cart.length - 1); return; }
+    if (priced) { openNewLinePriceForm(line); return; }
     toast(`${p.nombre}: quedan ${qtyFmt(posLeft(p.id), p.unidad)} en ${SRC_LBL[src].toLowerCase()}`);
   };
   const unit = p.unidad === 'kg' ? '/kg' : '/gamela';
