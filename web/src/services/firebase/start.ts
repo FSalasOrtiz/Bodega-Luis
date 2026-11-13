@@ -5,6 +5,7 @@ import type { DataStore } from '../datastore';
 import { FirebaseAuthService } from './auth';
 import { FirestoreDataStore } from './datastore';
 import { callResetData, FirebaseUserAdmin } from './users';
+import { syncServerClock, watchServerClock } from './serverClock';
 
 let current: FirestoreDataStore | null = null;
 let unsubscribe: (() => void) | null = null;
@@ -21,6 +22,8 @@ const signedOutStore: DataStore = {
 /** Al iniciar sesión: carga lo que el rol puede ver y escucha los cambios de los demás dispositivos. */
 async function onSignedIn(uid: string): Promise<void> {
   await onSignedOut();
+  // las fechas que guarda la app salen de la hora del servidor, no del reloj del dispositivo
+  await syncServerClock();
   const ds = new FirestoreDataStore(uid);
   try {
     const S = await ds.load();
@@ -48,6 +51,7 @@ export async function startFirebase(): Promise<void> {
   services.auth = new FirebaseAuthService(onSignedIn, onSignedOut);
   adminServices.users = new FirebaseUserAdmin();
   adminServices.allowDemoData = false;
+  watchServerClock();
   adminServices.reset = async (blank) => {
     if (!blank) throw new Error('En producción no se cargan datos de ejemplo.');
     await callResetData();
