@@ -11,3 +11,6 @@ done
 [ "$code" = "200" ] || { echo "No se pudo borrar Firestore (HTTP $code)"; exit 1; }
 curl -s -o /dev/null -X DELETE "$AU"
 npm run seed:emulator -- --demo
+# como el "Reiniciar datos" de producción: cambia la época para que las pestañas abiertas descarten su copia local y recarguen
+curl -s -o /dev/null -X PATCH -H 'Authorization: Bearer owner' -H 'Content-Type: application/json' \
+  "$FS/meta/app?updateMask.fieldPaths=epoch" -d "{\"fields\":{\"epoch\":{\"integerValue\":\"$(date +%s%3N)\"}}}"
