@@ -11,7 +11,7 @@ import { deleteClientCmd, saveClientCmd } from '../../domain/operations';
 import { cancelAbonoRequestCmd, saveAbonoCmd } from '../../domain/pos';
 import { receiptPayment } from '../../domain/receipts';
 import { useApp } from '../../state/store';
-import { exec, go } from '../../app/actions';
+import { exec, execOk, go } from '../../app/actions';
 
 /** Tarjeta "Créditos por cobrar" del Dashboard. */
 export function CreditCard() {
@@ -166,7 +166,7 @@ export function deleteClient(id: string): void {
   openModal(() => (
     <>
       <h2>¿Borrar a {c.nombre}?</h2><p className="muted">Deja de aparecer en Créditos y en el punto de venta. Sus ventas anteriores no cambian.</p>
-      <div className="acts"><button className="btn ghost" onClick={closeModal}>Cancelar</button><button className="btn bad" onClick={async () => { if (await exec(() => deleteClientCmd(id), 'Cliente borrado') !== undefined) closeModal(); }}>Borrar</button></div>
+      <div className="acts"><button className="btn ghost" onClick={closeModal}>Cancelar</button><button className="btn bad" onClick={async () => { if (await execOk(() => deleteClientCmd(id), 'Cliente borrado')) closeModal(); }}>Borrar</button></div>
     </>
   ));
 }

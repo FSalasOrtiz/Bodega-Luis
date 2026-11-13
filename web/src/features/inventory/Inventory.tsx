@@ -11,7 +11,7 @@ import { filteredProducts } from '../../domain/pos';
 import { lotSrc, lotStock, prodLots, prodStock, SRC_LBL, srcStock } from '../../domain/stock';
 import type { Unidad } from '../../types/model';
 import { useApp } from '../../state/store';
-import { exec } from '../../app/actions';
+import { exec, execOk } from '../../app/actions';
 import { intent } from '../../app/intent';
 
 export function Inventory() {
@@ -100,7 +100,7 @@ export function openAdjustStock(pid: string): void {
 function AdjustStock({ pid }: { pid: string }) {
   const p = P(pid), lots = prodLots(pid).slice().reverse();
   const [lot, setLot] = useState(lots[0]?.id || ''), [q, setQ] = useState(''), [m, setM] = useState('');
-  const save = async () => { if (await exec(() => adjustStockCmd(pid, lot, q, m), 'Ajuste registrado') !== undefined) closeModal(); };
+  const save = async () => { if (await execOk(() => adjustStockCmd(pid, lot, q, m), 'Ajuste registrado')) closeModal(); };
   return (
     <>
       <h2>Ajustar stock</h2><p className="muted">{p.nombre} · stock {qtyFmt(prodStock(pid), p.unidad)}. Usa negativo para descontar.</p>
@@ -118,7 +118,7 @@ function EditProduct({ pid }: { pid: string }) {
   const p = pid ? P(pid) : null;
   const [f, setF] = useState<ProductInput>({ sku: p?.sku || '', nombre: p?.nombre || '', familia: p ? (p.familia === 'Otros' ? '' : p.familia) : 'Tomate', calibre: p?.calibre || '', unidad: p?.unidad || 'gamela', precio: p ? String(p.precio) : '', usaGamela: p ? p.usaGamela : true, activo: p ? p.activo : true });
   const set = (k: Partial<ProductInput>) => setF((x) => ({ ...x, ...k }));
-  const save = async () => { if (await exec(() => saveProductCmd(pid, f), 'Producto guardado') !== undefined) closeModal(); };
+  const save = async () => { if (await execOk(() => saveProductCmd(pid, f), 'Producto guardado')) closeModal(); };
   return (
     <>
       <h2>{pid ? 'Editar' : 'Nuevo'} producto</h2>
@@ -140,7 +140,7 @@ function EditProduct({ pid }: { pid: string }) {
 function openNewFamily(): void { openModal(() => <NewFamily />); }
 function NewFamily() {
   const [n, setN] = useState('');
-  const save = async () => { if (await exec(() => saveFamilyCmd(n), 'Familia agregada.') !== undefined) closeModal(); };
+  const save = async () => { if (await execOk(() => saveFamilyCmd(n), 'Familia agregada.')) closeModal(); };
   return (
     <>
       <h2>Nueva familia</h2>

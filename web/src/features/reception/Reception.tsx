@@ -10,7 +10,7 @@ import { saveMermaCmd, saveReceptionCmd, voidReceptionCmd, type RecLineInput } f
 import { SRC_LBL, srcStock } from '../../domain/stock';
 import type { Fuente, Modalidad } from '../../types/model';
 import { useApp } from '../../state/store';
-import { exec } from '../../app/actions';
+import { exec, execOk } from '../../app/actions';
 import { askReason } from '../shared/askReason';
 import { openProducerForm } from '../producers/ProducerForm';
 
@@ -116,7 +116,7 @@ function MermaView() {
   const [prod, setProd] = useState(() => S.products.find((p) => p.activo && !p.envase)?.id || '');
   const [src, setSrc] = useState<Fuente>('consig'), [qty, setQty] = useState(''), [gam, setGam] = useState('');
   const p = P(prod), available = srcStock(p.id, src), q = Number(qty.replace(',', '.'));
-  const save = async () => { if (await exec(() => saveMermaCmd(prod, src, qty, gam), 'Merma registrada.') !== undefined) { setQty(''); setGam(''); } };
+  const save = async () => { if (await execOk(() => saveMermaCmd(prod, src, qty, gam), 'Merma registrada.')) { setQty(''); setGam(''); } };
   return (
     <div className="card"><h3>Registrar merma</h3>
       <div className="f"><label>Sale del stock de</label><Seg<Fuente> value={src} options={[['consig', SRC_LBL.consig], ['directa', SRC_LBL.directa]]} onChange={setSrc} label="Sale del stock de" /></div>
@@ -142,7 +142,7 @@ function RecDoc({ id }: { id: string }) {
   if (!r) return null;
   const pr = r.proveedor || PR(r.productor), cfg = r.emisor || ctx.S.cfg, total = r.lineas.reduce((a, l) => a + l.qty * l.costo, 0);
   const voidIt = () => askReason('Anular recepción', 'Se descontará del stock lo que aún quede de estos lotes.', async (m) => {
-    if (await exec(() => voidReceptionCmd(r.id, m), 'Recepción anulada') !== undefined) closeModal();
+    if (await execOk(() => voidReceptionCmd(r.id, m), 'Recepción anulada')) closeModal();
   });
   return (
     <>

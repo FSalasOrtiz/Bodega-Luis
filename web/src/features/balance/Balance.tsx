@@ -14,7 +14,7 @@ import { revenueEntries } from '../../domain/sales';
 import { lotSrc, SRC_LBL } from '../../domain/stock';
 import { downloadCSV } from '../../utils/csv';
 import { useApp } from '../../state/store';
-import { exec, go } from '../../app/actions';
+import { exec, execOk, go } from '../../app/actions';
 
 /* Balance: un mes a la vez (por defecto el actual) con ingresos, egresos fijos/variables y lo vendido; abajo los meses anteriores. */
 let bmCache = '';
@@ -165,7 +165,7 @@ function EditFixed({ id }: { id: string }) {
   const confirmDel = () => openModal(() => (
     <>
       <h2>¿Eliminar gasto fijo?</h2><p className="muted"><b>{f.desc || f.cat}</b> ({clp(f.monto)}/mes) se quitará de <b>todos</b> los meses, también de los ya cerrados. Si solo quieres que no siga desde ahora, usa “Dejar de repetir”.</p>
-      <div className="acts"><button className="btn ghost" onClick={closeModal}>Cancelar</button><button className="btn bad" onClick={async () => { if (await exec(() => delFixedCmd(id), 'Gasto eliminado') !== undefined) closeModal(); }}>Eliminar</button></div>
+      <div className="acts"><button className="btn ghost" onClick={closeModal}>Cancelar</button><button className="btn bad" onClick={async () => { if (await execOk(() => delFixedCmd(id), 'Gasto eliminado')) closeModal(); }}>Eliminar</button></div>
     </>
   ));
   return (
@@ -175,8 +175,8 @@ function EditFixed({ id }: { id: string }) {
         <div className="f"><label htmlFor="x_m">Monto mensual</label><input id="x_m" className="in num" type="number" value={m} onChange={(e) => setM(e.target.value)} /></div></div>
       <div className="f"><label htmlFor="x_d">Descripción</label><input id="x_d" className="in" value={d} onChange={(e) => setD(e.target.value)} /></div>
       <div className="acts"><button className="btn bad" onClick={confirmDel}>Eliminar</button>
-        {!f.hasta && <button className="btn ghost" onClick={async () => { if (await exec(() => endFixedCmd(id), 'Ya no se repetirá desde este mes') !== undefined) closeModal(); }}>Dejar de repetir</button>}
-        <button className="btn ghost" onClick={closeModal}>Cancelar</button><button className="btn pri" onClick={async () => { if (await exec(() => updFixedCmd(id, m, d, cat), 'Gasto fijo actualizado') !== undefined) closeModal(); }}>Guardar</button></div>
+        {!f.hasta && <button className="btn ghost" onClick={async () => { if (await execOk(() => endFixedCmd(id), 'Ya no se repetirá desde este mes')) closeModal(); }}>Dejar de repetir</button>}
+        <button className="btn ghost" onClick={closeModal}>Cancelar</button><button className="btn pri" onClick={async () => { if (await execOk(() => updFixedCmd(id, m, d, cat), 'Gasto fijo actualizado')) closeModal(); }}>Guardar</button></div>
     </>
   );
 }
@@ -193,7 +193,7 @@ function EditVar({ id, setBm }: { id: string; setBm: (v: string) => void }) {
     openModal(() => (
       <>
         <h2>¿Eliminar gasto?</h2><p className="muted"><b>{e.cat}</b> del {fdate(e.fecha)} por {clp(e.monto)}{e.cantidad ? `. También se descuentan ${e.cantidad} gamelas del stock` : ''}. Queda registrado en el historial de movimientos.</p>
-        <div className="acts"><button className="btn ghost" onClick={closeModal}>Cancelar</button><button className="btn bad" onClick={async () => { if (await exec(() => delVarCmd(id), 'Gasto eliminado') !== undefined) closeModal(); }}>Eliminar</button></div>
+        <div className="acts"><button className="btn ghost" onClick={closeModal}>Cancelar</button><button className="btn bad" onClick={async () => { if (await execOk(() => delVarCmd(id), 'Gasto eliminado')) closeModal(); }}>Eliminar</button></div>
       </>
     ));
   };

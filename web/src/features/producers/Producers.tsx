@@ -10,7 +10,7 @@ import { liqCalc, liqPctTxt, producerAccount } from '../../domain/producers';
 import { payLiqCmd, saveLiqCmd } from '../../domain/operations';
 import { lotSrc } from '../../domain/stock';
 import { useApp } from '../../state/store';
-import { exec } from '../../app/actions';
+import { exec, execOk } from '../../app/actions';
 import { openProducerForm } from './ProducerForm';
 import { openRecDoc } from '../reception/Reception';
 
@@ -147,7 +147,7 @@ function PayLiq({ id }: { id: string }) {
     <>
       <h2>Registrar pago</h2>
       <div className="f"><label htmlFor="pm">Medio</label><select id="pm" className="in" value={m} onChange={(e) => setM(e.target.value)}><option>transferencia</option><option>efectivo</option></select></div>
-      <div className="acts"><button className="btn ghost" onClick={closeModal}>Cancelar</button><button className="btn pri" onClick={async () => { if (await exec(() => payLiqCmd(id, m)) !== undefined) closeModal(); }}>Confirmar</button></div>
+      <div className="acts"><button className="btn ghost" onClick={closeModal}>Cancelar</button><button className="btn pri" onClick={async () => { if (await execOk(() => payLiqCmd(id, m))) closeModal(); }}>Confirmar</button></div>
     </>
   );
 }

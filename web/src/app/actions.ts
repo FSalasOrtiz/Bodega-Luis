@@ -19,6 +19,15 @@ export async function exec<T>(fn: () => T, ok?: string | ((r: T) => string)): Pr
   }
 }
 
+/**
+ * Igual que exec, pero indica si el comando se completó (true) o falló (false).
+ * Para comandos que no devuelven nada: con exec, éxito y fallo dan ambos undefined
+ * y la ventana no se cerraba al confirmar.
+ */
+export async function execOk(fn: () => unknown, ok?: string): Promise<boolean> {
+  return (await exec(() => { fn(); return true as const; }, ok)) === true;
+}
+
 const me = () => (ctx.meId ? ctx.S.users.find((u) => u.id === ctx.meId) ?? null : null);
 
 export function go(v: View): void {
