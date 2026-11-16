@@ -57,7 +57,7 @@ function openReset(): void {
   openModal(() => (
     <>
       <h2>¿Reiniciar datos?</h2>
-      <p className="muted">Se borra todo lo registrado: ventas, recepciones, stock, productores, clientes, créditos, cierres y gastos. Se mantienen los usuarios y el catálogo de productos con sus precios.</p>
+      <p className="muted">Se borra todo lo registrado: ventas, recepciones, stock, productores, clientes, créditos, cierres, gastos e historial. Se mantienen los usuarios y el catálogo de productos con sus precios.</p>
       <div className="acts"><button className="btn ghost" onClick={closeModal}>Cancelar</button>
         {adminServices.allowDemoData && <button className="btn ghost" onClick={() => void reset(false)}>Cargar datos de ejemplo</button>}
         <button className="btn bad" onClick={() => void reset(true)}>Dejar en blanco</button></div>

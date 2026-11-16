@@ -61,9 +61,9 @@ export const saveUser = onCall(async (req: CallableRequest<{ id?: string; input:
   return { id: created.uid };
 });
 
-const OPERATIONAL = ['producers', 'receptions', 'lots', 'moves', 'stock', 'sales', 'closures', 'liqs', 'prices', 'expenses', 'fixed', 'notes', 'clients', 'creditPayments', 'creditRequests', 'priceRequests', 'abonoRequests', 'comRequests', 'operations', 'refunds', 'adjustments', 'fiscalEvents'];
+const OPERATIONAL = ['producers', 'receptions', 'lots', 'moves', 'stock', 'sales', 'closures', 'liqs', 'prices', 'expenses', 'fixed', 'notes', 'clients', 'creditPayments', 'creditRequests', 'priceRequests', 'abonoRequests', 'comRequests', 'operations', 'refunds', 'adjustments', 'fiscalEvents', 'audit'];
 /**
- * Reinicio de datos (solo administrador): borra las operaciones y conserva usuarios, catálogo y ajustes.
+ * Reinicio de datos (solo administrador): borra las operaciones y el historial (auditoría) y conserva usuarios, catálogo y ajustes.
  * Sube `epoch` para que todos los dispositivos descarten su copia local y vuelvan a cargar.
  */
 export const resetData = onCall({ timeoutSeconds: 540, memory: '512MiB' }, async (req: CallableRequest<{ confirm?: string }>) => {

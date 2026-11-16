@@ -97,7 +97,12 @@ export class FirestoreDataStore implements DataStore {
           const m = this.docs.get(col)!;
           let max = Number(localStorage.getItem(this.syncKey(col)) || 0);
           snap.docChanges().forEach((ch) => {
-            if (ch.type === 'removed' && !w) return; // fuera del filtro de fecha: sigue vigente en la copia local
+            if (ch.type === 'removed') {
+              // el servidor confirma que ya no existe (reinicio o borrado desde la consola): sale de la copia local.
+              // Desde la caché no se confía: puede ser solo que aún no llegó la respuesta del servidor.
+              if (!snap.metadata.fromCache) m.delete(ch.doc.id);
+              return;
+            }
             const d = toPlain(ch.doc.id, ch.doc.data());
             m.set(d.id, d);
             if (typeof d._u === 'number' && d._u > max) max = d._u;
