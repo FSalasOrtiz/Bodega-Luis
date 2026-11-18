@@ -1,3 +1,4 @@
+import { DATA_MODE } from '../config/env';
 import { toast, toastError } from '../components/toast';
 import { closeModal } from '../components/modal';
 import { ctx } from '../domain/ctx';
@@ -51,6 +52,7 @@ export async function login(usuario: string, clave: string): Promise<void> {
 
 export async function logout(): Promise<void> {
   closeModal();
+  if (DATA_MODE === 'firebase') await import('../services/firebase/push').then((m) => m.disablePush()).catch(() => undefined);
   await services.auth.logout();
   store.setSession(null);
   store.setUi(POS_DEFAULT());

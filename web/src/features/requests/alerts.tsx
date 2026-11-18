@@ -4,6 +4,7 @@ import { CL, P, U } from '../../domain/catalog';
 import { clp, pctTxt } from '../../domain/format';
 import { pendingAbonoRequests, pendingComRequests, pendingCreditRequests, pendingPriceRequests, pendingVoidRequests } from '../../domain/requests';
 import { useApp } from '../../state/store';
+import { DATA_MODE } from '../../config/env';
 
 /* Alertas a Luis cuando un vendedor pide autorización: notificación del sistema (celular o PC),
    sonido, vibración y contador en el título de la pestaña. Funcionan mientras la app esté abierta,
@@ -52,6 +53,15 @@ function registration(): Promise<ServiceWorkerRegistration | null> {
   if (!swReg) swReg = ('serviceWorker' in navigator ? navigator.serviceWorker.register('/sw.js').then(() => navigator.serviceWorker.ready) : Promise.resolve(null)).catch(() => null);
   return swReg;
 }
+/** Push de Firebase: avisa aunque la app esté cerrada. Solo en modo Firebase (producción). */
+let pushOn = false;
+async function subscribePush(): Promise<void> {
+  if (DATA_MODE !== 'firebase') return;
+  const reg = await registration();
+  if (!reg) return;
+  try { const m = await import('../../services/firebase/push'); pushOn = await m.enablePush(reg); }
+  catch (e) { pushOn = false; console.warn('No se pudieron activar los avisos push', e); }
+}
 async function showSystem(title: string, body: string, tag: string): Promise<void> {
   if (!supported() || Notification.permission !== 'granted') return;
   const opts: NotificationOptions & { renotify?: boolean; vibrate?: number[] } = { body, tag, icon: '/brand/favicon.png', badge: '/brand/favicon.png', renotify: true, requireInteraction: true, vibrate: [200, 100, 200] };
@@ -74,7 +84,7 @@ export function useRequestAlerts(enabled: boolean): void {
     const onTouch = () => unlockAudio();
     window.addEventListener('pointerdown', onTouch, { capture: true });
     window.addEventListener('keydown', onTouch, { capture: true });
-    if (supported() && Notification.permission === 'granted') void registration();
+    if (supported() && Notification.permission === 'granted') void subscribePush();
     return () => { window.removeEventListener('pointerdown', onTouch, { capture: true }); window.removeEventListener('keydown', onTouch, { capture: true }); };
   }, [enabled]);
 
@@ -89,7 +99,8 @@ export function useRequestAlerts(enabled: boolean): void {
     chime();
     try { navigator.vibrate?.([200, 100, 200]); } catch { /* sin vibración */ }
     const title = fresh.length === 1 ? 'Solicitud por autorizar' : `${fresh.length} solicitudes por autorizar`;
-    void showSystem(title, fresh.map((p) => p.text).join('\n'), 'solicitudes');
+    // Con push activo la notificación la muestra el service worker (llega también con la app cerrada).
+    if (!pushOn) void showSystem(title, fresh.map((p) => p.text).join('\n'), 'solicitudes');
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [enabled, key]);
 
@@ -110,11 +121,11 @@ export function AlertsToggle() {
     unlockAudio();
     const r = await Notification.requestPermission();
     setPerm(r);
-    if (r === 'granted') { await registration(); void showSystem('Avisos activados', 'Te avisaremos cuando un vendedor pida una autorización.', 'solicitudes-ok'); }
+    if (r === 'granted') { await subscribePush(); void showSystem('Avisos activados', 'Te avisaremos cuando un vendedor pida una autorización.', 'solicitudes-ok'); }
   };
   return (
     <div className="card request-alert alerts-toggle" role="region" aria-label="Activar avisos">
-      <div className="grow"><b>Activa los avisos de solicitudes</b><span className="muted"> Te llegará una notificación con sonido cuando un vendedor pida autorizar algo, aunque estés en otra aplicación.</span></div>
+      <div className="grow"><b>Activa los avisos de solicitudes</b><span className="muted"> Te llegará una notificación con sonido cuando un vendedor pida autorizar algo, aunque tengas la app cerrada.</span></div>
       <button className="btn sm pri" onClick={() => void enable()}><Icon n="bell" s={15} /> Activar avisos</button>
     </div>
   );

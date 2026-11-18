@@ -188,6 +188,14 @@ service cloud.firestore {
       allow update: if canUpdate(isAdmin());
     }
 
+    // ---------- avisos push: un documento por dispositivo del administrador ----------
+    // Nadie los lee desde la app; solo la Cloud Function que envía las notificaciones.
+    match /pushTokens/{token} {
+      allow create, update: if isAdmin() && mine('user') && data().token == token
+        && data().keys().hasOnly(['user', 'token', 'ua', '_u']) && data()._u == request.time;
+      allow delete: if signedIn() && resource.data.user == request.auth.uid;
+    }
+
     // ---------- bitácora: se agrega, nunca se edita ----------
     match /audit/{id} {
       allow read: if isAdmin();
