@@ -760,3 +760,8 @@ button,a[role="button"],[role="button"] {touch-action:manipulation;user-select:n
   .card-tabs{flex-wrap:nowrap;overflow-x:auto;gap:6px;scrollbar-width:none}
   .card-tabs .btn.sm{flex:none;padding:0 12px}
 }
+
+/* ---------- Activar avisos de solicitudes (solo administrador) ---------- */
+.alerts-toggle{display:flex;flex-wrap:wrap;align-items:center;gap:10px 14px}
+.alerts-toggle .grow{flex:1 1 240px;min-width:0}
+.alerts-note{display:flex;align-items:flex-start;gap:6px;font-size:13px;margin:0 0 12px}

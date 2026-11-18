@@ -69,7 +69,7 @@ function Ticket({ id }: { id: string }) {
         <p className="receipt-disclaimer">DOCUMENTO NO VÁLIDO TRIBUTARIAMENTE</p>
         {s.estado === 'anulada' && <div className="receipt-void"><b>VENTA ANULADA</b><p>{s.motivoAnula || ''}</p></div>}
         <dl className="receipt-meta"><div><dt>Emisión</dt><dd>{fdt(s.fecha)}</dd></div><div><dt>Vendedor</dt><dd>{d.vendedor}</dd></div></dl>
-        {d.receptor && <section className="receipt-customer"><b>CLIENTE</b><p>{d.receptor.razonSocial}</p><p>RUT {d.receptor.rut}</p><p>{d.receptor.giro}</p><p>{d.receptor.direccion}, {d.receptor.comuna}</p>{d.receptor.telefono && <p>Teléfono: {d.receptor.telefono}</p>}</section>}
+        {d.receptor && <section className="receipt-customer"><b>CLIENTE</b><p>{d.receptor.razonSocial}</p><p>RUT {d.receptor.rut}</p>{d.receptor.giro && <p>{d.receptor.giro}</p>}{(d.receptor.direccion || d.receptor.comuna) && <p>{[d.receptor.direccion, d.receptor.comuna].filter(Boolean).join(', ')}</p>}{d.receptor.telefono && <p>Teléfono: {d.receptor.telefono}</p>}</section>}
         <table className="receipt-items"><caption className="receipt-sr">Productos de la venta</caption><thead><tr><th scope="col">Detalle</th><th scope="col">Monto</th></tr></thead>
           <tbody>{d.items.map((l, i) => <tr key={i}><td><b>{l.nombre}</b><span>{qtyFmt(l.qty, l.unidad)} × {clp(l.precio)}</span></td><td>{clp(l.subtotal)}</td></tr>)}</tbody></table>
         <dl className="receipt-totals"><div><dt>Neto referencial</dt><dd>{clp(d.neto)}</dd></div><div><dt>IVA 19% referencial</dt><dd>{clp(d.iva)}</dd></div><div className="receipt-grand-total"><dt>TOTAL</dt><dd>{clp(d.total)}</dd></div></dl>
@@ -95,7 +95,7 @@ function InvoicePreview({ id }: { id: string }) {
         <div className="invoice-notice">DOCUMENTO NO VÁLIDO TRIBUTARIAMENTE · NO CEDIBLE</div>
         {s.estado === 'anulada' && <p className="invoice-cancelled"><b>VENTA ANULADA</b> · {s.motivoAnula || ''}</p>}
         <div className="invoice-date"><span><b>Comprobante interno:</b> {s.num}</span><span><b>Fecha de emisión:</b> {fdate(s.fecha)}</span></div>
-        <dl className="invoice-customer"><Field label="Señor(es)" value={c.razonSocial} /><Field label="RUT" value={c.rut} /><Field label="Giro" value={c.giro} /><Field label="Teléfono" value={c.telefono} /><Field label="Dirección" value={c.direccion} /><Field label="Comuna" value={c.comuna} /></dl>
+        <dl className="invoice-customer"><Field label="Señor(es)" value={c.razonSocial} /><Field label="RUT" value={c.rut} />{c.giro && <Field label="Giro" value={c.giro} />}{c.telefono && <Field label="Teléfono" value={c.telefono} />}{c.direccion && <Field label="Dirección" value={c.direccion} />}{c.comuna && <Field label="Comuna" value={c.comuna} />}</dl>
         <p className="invoice-payment"><b>Medios de pago:</b> {m.data.pagos.filter((p) => p.monto).map((p) => receiptPayment(p.medio) + ' ' + invoiceMoney(p.monto)).join(' · ')}</p>
         {m.warning && <p className="invoice-notice">{m.warning}</p>}
         <div className="invoice-items-wrap"><table className="invoice-items"><caption className="receipt-sr">Detalle de la factura: valores netos referenciales</caption>

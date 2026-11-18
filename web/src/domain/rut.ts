@@ -13,10 +13,8 @@ export function validRut(value: unknown): boolean {
 }
 export function invoiceRecipientError(receptor: Partial<Receptor> | null | undefined): string {
   if (!receptor || !validRut(receptor.rut)) return 'Ingresa un RUT válido del cliente para la factura, con guion y dígito verificador.';
-  for (const [key, label, max] of [['razonSocial', 'razón social', 100], ['giro', 'giro', 80], ['direccion', 'dirección', 70], ['comuna', 'comuna', 20]] as const) {
-    const value = String(receptor[key] || '').trim();
-    if (!value) return 'Completa ' + label + ' del cliente para la factura.';
-    if (value.length > max) return 'El campo ' + label + ' admite hasta ' + max + ' caracteres.';
-  }
+  const nombre = String(receptor.razonSocial || '').trim();
+  if (!nombre) return 'Completa el nombre o razón social del cliente para la factura.';
+  if (nombre.length > 100) return 'El nombre del cliente admite hasta 100 caracteres.';
   return '';
 }

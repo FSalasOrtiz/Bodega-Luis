@@ -160,9 +160,10 @@ export interface Payment {
 export interface Receptor {
   rut: string;
   razonSocial: string;
-  giro: string;
-  direccion: string;
-  comuna: string;
+  /** Opcionales: desde nov-2026 la factura pide solo nombre y RUT; ventas antiguas pueden traerlos. */
+  giro?: string;
+  direccion?: string;
+  comuna?: string;
   telefono?: string;
 }
 

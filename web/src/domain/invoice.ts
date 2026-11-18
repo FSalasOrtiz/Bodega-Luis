@@ -77,7 +77,7 @@ export function sheetInvoicePDF(s: Sale): Uint8Array {
     rect(margin, y, contentWidth, 21, '0.94 0.94 0.94', true); drawText('DOCUMENTO NO VÁLIDO TRIBUTARIAMENTE - NO CEDIBLE', margin + 8, y + 5, 9, true); y += 32;
     drawText('Comprobante interno N° ' + s.num, margin, y, 9, true); drawText('Fecha de emisión: ' + fdate(s.fecha), W - margin - 174, y, 9); y += 22;
     const clientTop = y;
-    for (const [label, value] of [['Señor(es)', c.razonSocial], ['RUT', c.rut], ['Giro', c.giro], ['Dirección', c.direccion], ['Comuna', c.comuna], ['Teléfono', c.telefono]] as const) {
+    for (const [label, value] of ([['Señor(es)', c.razonSocial], ['RUT', c.rut], ['Giro', c.giro], ['Dirección', c.direccion], ['Comuna', c.comuna], ['Teléfono', c.telefono]] as const).filter(([, v], i) => i < 2 || v)) {
       drawText(label + ':', margin + 8, y + 5, 9, true);
       const height = paragraph(value || 'No registrado', margin + 83, y + 5, contentWidth - 96, 9);
       y += Math.max(20, height + 8);

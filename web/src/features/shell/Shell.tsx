@@ -8,6 +8,7 @@ import { bottomLabel, bottomNav, MENU, menuFor, ROLE_LABEL } from '../../routes/
 import { go, logout } from '../../app/actions';
 import { openPasswordForm } from '../auth/PasswordForm';
 import { AdminBanners } from '../requests/Banners';
+import { AlertsToggle, useRequestAlerts } from '../requests/alerts';
 
 export function Shell({ children }: { children: ReactNode }) {
   const { view, online } = useApp();
@@ -15,6 +16,7 @@ export function Shell({ children }: { children: ReactNode }) {
   const u = me()!;
   const m = menuFor(u), admin = u.rol === 'admin', accountant = u.rol === 'contador';
   const bn = bottomNav(u);
+  useRequestAlerts(admin);
   return (
     <>
       <div className="app">
@@ -45,7 +47,7 @@ export function Shell({ children }: { children: ReactNode }) {
             </div>
           </div>
           {!online && <p className="err" role="status" style={{ margin: '0 0 12px' }}>Sin conexión: los cambios se guardarán cuando vuelva la señal. No cierres la aplicación.</p>}
-          {admin && <AdminBanners />}
+          {admin && <><AlertsToggle /><AdminBanners /></>}
           {children}
         </main>
       </div>

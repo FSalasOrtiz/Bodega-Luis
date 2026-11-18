@@ -206,8 +206,7 @@ function GamBox({ g, err }: { g: GamCalc; err: string }) {
 }
 
 const INVOICE_FIELDS: [keyof import('../../types/model').Receptor, string, string, number][] = [
-  ['rut', 'RUT', '12.345.678-5', 12], ['razonSocial', 'Razón social', 'Nombre de la empresa', 100], ['giro', 'Giro', 'Actividad comercial', 80],
-  ['direccion', 'Dirección', 'Calle y número', 70], ['comuna', 'Comuna', 'Comuna del cliente', 20], ['telefono', 'Teléfono (opcional)', '+56 9 1234 5678', 20],
+  ['razonSocial', 'Nombre o razón social', 'Nombre del cliente o empresa', 100], ['rut', 'RUT', '12.345.678-5', 12],
 ];
 function InvoiceFields() {
   const { ui } = useApp();
@@ -215,7 +214,7 @@ function InvoiceFields() {
     <fieldset className="invoice-fields"><legend>Datos del cliente</legend>
       {INVOICE_FIELDS.map(([key, label, ph, max]) => (
         <div className="f" key={key}><label htmlFor={`inv-${key}`}>{label}</label>
-          <input type={key === 'telefono' ? 'tel' : 'text'} autoComplete={key === 'telefono' ? 'tel' : undefined} className="in" id={`inv-${key}`} value={ui.receptor?.[key] || ''} placeholder={ph} maxLength={max} required={key !== 'telefono'}
+          <input type="text" className="in" id={`inv-${key}`} value={ui.receptor?.[key] || ''} placeholder={ph} maxLength={max} required
             onChange={(e) => store.setUi((u) => ({ receptor: { ...u.receptor, [key]: e.target.value } }))} />
         </div>
       ))}

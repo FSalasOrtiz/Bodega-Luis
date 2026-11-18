@@ -33,7 +33,7 @@ export function saleText(s: Sale): string {
   const d = receiptData(s);
   return `*${d.emisor.nombre}*\nRUT ${d.emisor.rut}\n${receiptTitle(s)}\nComprobante interno N° ${s.num}\n${fdt(s.fecha)} · ${d.vendedor}\n` +
     (s.estado === 'anulada' ? `ANULADA: ${s.motivoAnula || ''}\n` : '') +
-    (d.receptor ? `Cliente: ${d.receptor.razonSocial}\nRUT: ${d.receptor.rut}\nGiro: ${d.receptor.giro}\n${d.receptor.direccion}, ${d.receptor.comuna}\n${d.receptor.telefono ? 'Teléfono: ' + d.receptor.telefono + '\n' : ''}` : '') + '\n' +
+    (d.receptor ? `Cliente: ${d.receptor.razonSocial}\nRUT: ${d.receptor.rut}\n${d.receptor.giro ? 'Giro: ' + d.receptor.giro + '\n' : ''}${d.receptor.direccion || d.receptor.comuna ? [d.receptor.direccion, d.receptor.comuna].filter(Boolean).join(', ') + '\n' : ''}${d.receptor.telefono ? 'Teléfono: ' + d.receptor.telefono + '\n' : ''}` : '') + '\n' +
     d.items.map((l) => `${l.nombre}\n${qtyFmt(l.qty, l.unidad)} × ${clp(l.precio)} = ${clp(l.subtotal)}`).join('\n') +
     `\n\nNeto referencial: ${clp(d.neto)}\nIVA 19% referencial: ${clp(d.iva)}\n*TOTAL: ${clp(d.total)}*\n` +
     d.pagos.filter((p) => p.monto).map((p) => `${payLabel(p)}: ${clp(p.monto)}`).join('\n') +
@@ -66,7 +66,7 @@ export function receiptPdfLines(s: Sale): PdfLine[] {
   add('DOCUMENTO NO VÁLIDO TRIBUTARIAMENTE', true, true);
   if (s.estado === 'anulada') { add('VENTA ANULADA', true, true); add(s.motivoAnula || ''); }
   add(); add('Emisión: ' + fdt(s.fecha)); add('Vendedor: ' + d.vendedor);
-  if (d.receptor) { add(); add('CLIENTE', true); add(d.receptor.razonSocial); add('RUT ' + d.receptor.rut); add(d.receptor.giro); add(d.receptor.direccion + ', ' + d.receptor.comuna); if (d.receptor.telefono) add('Teléfono: ' + d.receptor.telefono); }
+  if (d.receptor) { add(); add('CLIENTE', true); add(d.receptor.razonSocial); add('RUT ' + d.receptor.rut); if (d.receptor.giro) add(d.receptor.giro); if (d.receptor.direccion || d.receptor.comuna) add([d.receptor.direccion, d.receptor.comuna].filter(Boolean).join(', ')); if (d.receptor.telefono) add('Teléfono: ' + d.receptor.telefono); }
   add('-'.repeat(38));
   for (const l of d.items) { add(l.nombre, true); pair(qtyFmt(l.qty, l.unidad) + ' x ' + clp(l.precio), clp(l.subtotal)); add(); }
   add('-'.repeat(38)); pair('Neto referencial', clp(d.neto)); pair('IVA 19% referencial', clp(d.iva)); pair('TOTAL', clp(d.total), true); add();
