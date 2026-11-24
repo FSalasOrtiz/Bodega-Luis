@@ -10,6 +10,7 @@ import { openPasswordForm } from '../auth/PasswordForm';
 import { AdminBanners } from '../requests/Banners';
 import { AlertsToggle, useRequestAlerts } from '../requests/alerts';
 import { WorkDayBanner, WorkDayPicker } from './WorkDay';
+import { useIdleLogout } from '../../app/idleLogout';
 
 export function Shell({ children }: { children: ReactNode }) {
   const { view, online } = useApp();
@@ -18,6 +19,7 @@ export function Shell({ children }: { children: ReactNode }) {
   const m = menuFor(u), admin = u.rol === 'admin', accountant = u.rol === 'contador';
   const bn = bottomNav(u);
   useRequestAlerts(admin);
+  useIdleLogout(import.meta.env.VITE_E2E !== 'true');
   return (
     <>
       <div className="app">
