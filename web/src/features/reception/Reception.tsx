@@ -21,6 +21,11 @@ const newRecForm = (): RecForm => ({ productor: ctx.S.producers[0]?.id || '', mo
 
 export function Reception() {
   useApp();
+  // la recepción (costos y precios de venta) la hace solo Luis; los vendedores registran merma
+  if (!isAdmin()) return <><Head t="Merma" /><MermaView /></>;
+  return <ReceptionAdmin />;
+}
+function ReceptionAdmin() {
   const [tab, setTab] = useState<'rec' | 'merma'>(() => (sessionStorage.getItem('bodegaLV.recTab') === 'merma' ? 'merma' : 'rec'));
   const pick = (t: 'rec' | 'merma') => { setTab(t); try { sessionStorage.setItem('bodegaLV.recTab', t); } catch { /* nada */ } };
   return (

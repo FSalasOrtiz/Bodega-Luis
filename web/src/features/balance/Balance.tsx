@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { Icon, Logo } from '../../components/icons';
-import { Head, paginate, Pager, Seg } from '../../components/ui';
+import { Head, paginate, Pager } from '../../components/ui';
 import { closeModal, openModal } from '../../components/modal';
 import { toast } from '../../components/toast';
 import { lineName, P, productFamilies, U } from '../../domain/catalog';
@@ -8,13 +8,14 @@ import { ctx } from '../../domain/ctx';
 import { clp, dayKey, fdate, fdt, MESES, monthKey, monthName, now, pad2, prevMonth, qtyFmt, today } from '../../domain/format';
 import { anulTxt, FIX_CATS, monthStats, unitTotals, VAR_CATS, type MonthStats } from '../../domain/balance';
 import { producersOwed } from '../../domain/producers';
-import { canDelVar, delFixedCmd, delVarCmd, endFixedCmd, saveGastoCmd, updFixedCmd, updVarCmd, type GastoInput } from '../../domain/operations';
+import { canDelVar, delFixedCmd, delVarCmd, endFixedCmd, updFixedCmd, updVarCmd } from '../../domain/operations';
 import { receiptKind, receiptPayment } from '../../domain/receipts';
 import { revenueEntries } from '../../domain/sales';
 import { lotSrc, SRC_LBL } from '../../domain/stock';
 import { downloadCSV } from '../../utils/csv';
 import { useApp } from '../../state/store';
 import { exec, execOk, go } from '../../app/actions';
+import { openGasto } from '../shared/Gasto';
 
 /* Balance: un mes a la vez (por defecto el actual) con ingresos, egresos fijos/variables y lo vendido; abajo los meses anteriores. */
 let bmCache = '';
@@ -77,7 +78,7 @@ export function Balance() {
           <div className="rows">{fixPg.rows.map((f) => <Row key={f.id} t={f.desc || f.cat} sub={f.cat} v={f.monto} neg edit={() => openEditFixed(f.id)} />)}{!b.fijos.length && <div className="empty">Sin gastos fijos</div>}</div>
           <Pager pg={fixPg} onPage={setFixPage} label="Páginas de gastos fijos" />
           <h4 className="exp-group">Gastos variables <span className="pill mute">solo este mes</span><b className="num">− {clp(b.tVars)}</b></h4>
-          <div className="rows">{varPg.rows.map((e) => <Row key={e.id} t={e.cat + (e.cantidad ? ` · ${e.cantidad} gamelas` : '')} sub={fdate(e.fecha) + (e.desc ? ' · ' + e.desc : '')} v={e.monto} neg edit={() => openEditVar(e.id, setBm)} />)}{!vars.length && <div className="empty">Sin gastos variables este mes</div>}</div>
+          <div className="rows">{varPg.rows.map((e) => <Row key={e.id} t={e.cat + (e.cantidad ? ` · ${e.cantidad} gamelas` : '')} sub={fdate(e.fecha) + (e.desc ? ' · ' + e.desc : '') + (e.deCaja ? ' · caja de ' + U(e.user || '').nombre : '')} v={e.monto} neg edit={() => openEditVar(e.id, setBm)} />)}{!vars.length && <div className="empty">Sin gastos variables este mes</div>}</div>
           <Pager pg={varPg} onPage={setVarPage} label="Páginas de gastos variables" />
         </div>
       </div>
@@ -133,26 +134,6 @@ function MonthCal({ sel, onPick }: { sel: string; onPick: (v: string) => void })
       <div className="month-cal-head"><button type="button" className="btn sm ghost" aria-label="Año anterior" onClick={() => setY(y - 1)}>‹</button><b>{y}</b><button type="button" className="btn sm ghost" aria-label="Año siguiente" disabled={y >= maxY} onClick={() => setY(y + 1)}>›</button></div>
       <div className="month-cal">{MESES.map((m, i) => { const k = y + '-' + pad2(i + 1); return <button type="button" key={k} className={`btn ${k === sel ? 'pri' : 'ghost'}`} disabled={k > cur} aria-current={k === sel ? 'true' : undefined} onClick={() => pick(k)}>{m.slice(0, 3)}</button>; })}</div>
       <div className="acts"><button className="btn ghost" onClick={() => pick(cur)}>Mes actual</button><button className="btn pri" onClick={closeModal}>Cerrar</button></div>
-    </>
-  );
-}
-
-function openGasto(setBm: (v: string) => void): void { openModal(() => <Gasto setBm={setBm} />); }
-function Gasto({ setBm }: { setBm: (v: string) => void }) {
-  const [g, setG] = useState<GastoInput>({ tipo: 'variable', cat: VAR_CATS[0], fecha: today(), monto: '', desc: '', qty: '' });
-  const fijo = g.tipo === 'fijo', cats = fijo ? FIX_CATS : VAR_CATS, cat = cats.includes(g.cat) ? g.cat : cats[0], gam = !fijo && cat === 'Compra de gamelas';
-  const set = (p: Partial<GastoInput>) => setG((x) => ({ ...x, ...p }));
-  const save = async () => { const mk = await exec(() => saveGastoCmd({ ...g, cat }), 'Gasto registrado'); if (mk) { setBm(mk); closeModal(); } };
-  return (
-    <>
-      <h2>Agregar gasto</h2><p className="muted">{fijo ? 'Se repetirá todos los meses desde este mes, hasta que lo desactives.' : 'Se registra solo en el mes de la fecha.'}</p>
-      <div className="f"><Seg value={g.tipo} options={[['variable', 'Variable'], ['fijo', 'Fijo mensual']]} onChange={(t) => set({ tipo: t })} label="Tipo de gasto" /></div>
-      <div className="row"><div className="f"><label htmlFor="g_c">Categoría</label><select id="g_c" className="in" value={cat} onChange={(e) => set({ cat: e.target.value })}>{cats.map((c) => <option key={c}>{c}</option>)}</select></div>
-        {!fijo && <div className="f"><label htmlFor="g_f">Fecha</label><input id="g_f" className="in" type="date" value={g.fecha} max={today()} onChange={(e) => set({ fecha: e.target.value })} /></div>}</div>
-      {gam && <div className="f"><label htmlFor="g_q">Cantidad de gamelas compradas</label><input id="g_q" className="in num" type="number" inputMode="numeric" value={g.qty} onChange={(e) => set({ qty: e.target.value })} /><small className="muted">Se suman al stock de gamelas para vender.</small></div>}
-      <div className="row"><div className="f"><label htmlFor="g_m">Monto total</label><input id="g_m" className="in num" type="number" inputMode="numeric" value={g.monto} onChange={(e) => set({ monto: e.target.value })} /></div>
-        <div className="f"><label htmlFor="g_d">Descripción</label><input id="g_d" className="in" value={g.desc} onChange={(e) => set({ desc: e.target.value })} placeholder={fijo ? 'Ej: sueldo Gonzalo' : 'Opcional'} /></div></div>
-      <div className="acts"><button className="btn ghost" onClick={closeModal}>Cancelar</button><button className="btn pri" onClick={() => void save()}>Guardar</button></div>
     </>
   );
 }

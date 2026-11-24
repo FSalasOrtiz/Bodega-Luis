@@ -310,6 +310,15 @@ export interface Closure {
   recuperaciones?: { monto: number; por: string; en: Ms }[];
   ventas: string[];
   devoluciones: string[];
+  /** Gastos pagados con la caja del turno (ya descontados de lo esperado). */
+  gastoCaja?: number;
+  gastos?: string[];
+  /** Quien cerró la caja, si no fue su dueño (el turno siguiente o el administrador). */
+  cerradoPor?: string;
+  /** A quién se entregó la caja; la acepta con `recibidoPor`. */
+  recibe?: string;
+  recibidoPor?: string;
+  recibidoEn?: Ms;
   [split: string]: unknown;
 }
 
@@ -365,6 +374,12 @@ export interface Expense {
   desc: string;
   cantidad?: number;
   lot?: string;
+  /** Quién lo registró. */
+  user?: string;
+  /** Pagado con el efectivo de la caja del turno: se descuenta de lo esperado en el cierre. */
+  deCaja?: boolean;
+  /** Cierre de caja en que se descontó. */
+  cierre?: string;
 }
 
 export interface FixedExpense {

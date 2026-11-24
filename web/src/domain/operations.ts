@@ -1,9 +1,9 @@
 /* Comandos de negocio (todo lo que modifica datos fuera de la venta).
    Cada comando se ejecuta dentro de store.run(): es atómico, y si lanza un error no se guarda nada.
    Los mensajes de error son los mismos que mostraba el prototipo. */
-import type { Client, Config, Fuente, Lot, Modalidad, Product, Reception, Rol, Unidad, User } from '../types/model';
+import type { Client, Closure, Config, Fuente, Lot, Modalidad, Product, Reception, Rol, Unidad, User } from '../types/model';
 import { audit } from './audit';
-import { COM_DEF, gamId, gamInt, GAMELA_PRECIO, kgGam, P, PR, Popt, productFamilies, U } from './catalog';
+import { COM_DEF, gamId, gamInt, kgGam, P, PR, Popt, productFamilies, U } from './catalog';
 import { ctx, isAdmin, me } from './ctx';
 import { creditBalance, liveClients } from './credits';
 import { clp, dayKey, decIn, fdate, monthKey, monthName, now, prevMonth, priceErr, priceOk, round2, searchText, today, uid, DAY } from './format';
@@ -13,7 +13,7 @@ import { liqCalc } from './producers';
 import { receiptPayment } from './receipts';
 import { expireOpenRequests } from './requests';
 import { activeFinancialSale, refundCashier } from './sales';
-import { incomeOf, shortagePending, shortageRecoveries } from './balance';
+import { GAMELA_CAT, incomeOf, shortagePending, shortageRecoveries, VAR_CATS } from './balance';
 import { revenueEntries } from './sales';
 import { lotStock, lotSrc, prodLots, prodStock, SRC_LBL, srcLots, srcStock } from './stock';
 import { needsFiscalReconciliation, workflowAdmin, workflowTransaction, workflowUser } from './workflow';
@@ -25,6 +25,7 @@ export interface RecLineInput { prod: string; qty: string | number; costo?: stri
 export interface RecInput { productor: string; modalidad: Modalidad; lineas: RecLineInput[] }
 
 export function saveReceptionCmd(form: RecInput): Reception {
+  requireAdmin('Solo el administrador registra recepciones.');
   const S = ctx.S;
   const lineas = form.lineas.map((l) => ({ ...l, qty: decIn(l.qty) }));
   if (!S.producers.some((p) => p.id === form.productor)) throw new Error('Selecciona un productor o proveedor.');
@@ -41,13 +42,14 @@ export function saveReceptionCmd(form: RecInput): Reception {
   precios.forEach((raw, i) => { if (raw && !P(ls[i].prod).envase && !priceOk(Number(raw))) throw new Error(`${P(ls[i].prod).nombre}: ${priceErr(raw)}`); });
   const t = now(), u = me()!;
   const r: Reception = { id: uid('r'), fecha: t, productor: form.productor, modalidad: form.modalidad, user: u.id, anulada: false, lineas: [], proveedor: { ...(PR(form.productor) as Reception['proveedor'] & object) }, emisor: { ...S.cfg } };
-  const gam = ls.filter((l) => P(l.prod).envase).reduce((a, l) => a + Math.round(+l.qty), 0);
+  // gamelas que entran a la bodega: las que llegan solas, las del producto que viene en gamela (tomate) y las anotadas aparte (palta)
+  const gam = ls.reduce((a, l) => { const p = P(l.prod); return a + (p.envase || (p.usaGamela && p.unidad === 'gamela') ? Math.round(+l.qty) : kgGam(p) ? gamInt(l.gam) || 0 : 0); }, 0);
   return workflowTransaction(() => {
     workflowUser();
     if (gam > 0) {
       const gl = gamelaReturnLot(t);
       r.gamelas = gam; r.gamelasLot = gl.id;
-      S.moves.push({ id: uid('m'), lot: gl.id, prod: gamId(), tipo: 'recepción', qty: gam, user: u.id, fecha: t, motivo: 'Gamelas que llegaron con la recepción', ref: r.id });
+      S.moves.push({ id: uid('m'), lot: gl.id, prod: gamId(), tipo: 'recepción', qty: gam, user: u.id, fecha: t, motivo: 'Gamelas que llegaron con la recepción (incluye las del producto)', ref: r.id });
     }
     ls.forEach((l, i) => {
       if (P(l.prod).envase) return;
@@ -117,7 +119,6 @@ function setGeneralPriceKeepingStock(p: Product, v: number, t: number): void {
 export function setPriceCmd(pid: string, raw: string): number {
   requireAdmin('Solo el administrador cambia precios.');
   const p = P(pid), v = Number(String(raw).trim());
-  if (p.envase) throw new Error(`La garantía por gamela es fija: ${clp(GAMELA_PRECIO)}`);
   if (!priceOk(v)) throw new Error(priceErr(String(raw).trim()));
   if (v !== p.precio) {
     ctx.S.prices.push({ id: uid('pc'), prod: pid, precio: v, desde: now(), user: me()!.id });
@@ -134,7 +135,8 @@ export function setPriceCmd(pid: string, raw: string): number {
 export function setEmbarquePricesCmd(pid: string, generalRaw: string, lotes: Record<string, string>): number {
   requireAdmin('Solo el administrador cambia precios.');
   const p = P(pid);
-  if (p.envase) throw new Error(`La garantía por gamela es fija: ${clp(GAMELA_PRECIO)}`);
+  // la gamela tiene un solo precio (sin embarques)
+  if (p.envase) lotes = {};
   const general = Number(String(generalRaw).trim());
   if (!priceOk(general)) throw new Error(priceErr(String(generalRaw).trim()));
   const open = openEmbarques(pid), t = now(), user = me()!.id;
@@ -217,30 +219,71 @@ export function pendingShift(userId: string) {
   const mine = S.sales.filter((s) => s.vendedor === userId && activeFinancialSale(s) && !s.cierre);
   const refunds = (S.refunds || []).filter((r) => refundCashier(r) === userId && r.state === 'confirmada_manual' && !r.cierre);
   const abonos = (S.creditPayments || []).filter((a) => a.user === userId && !a.anulado && !a.cierre);
-  return { mine, refunds, abonos };
+  /** Gastos pagados con el efectivo de la caja del turno: se descuentan de lo esperado. */
+  const gastos = (S.expenses || []).filter((e) => e.deCaja && e.user === userId && !e.cierre);
+  return { mine, refunds, abonos, gastos };
 }
-export function closeShiftCmd(openingRaw: string, declaredRaw: string) {
+export const hasPendingShift = (userId: string): boolean => { const x = pendingShift(userId); return !!(x.mine.length || x.refunds.length || x.abonos.length || x.gastos.length); };
+/** Cajas que el usuario puede cerrar: la suya y, como los turnos se pasan entre ellos, la de cualquier otro vendedor o administrador. */
+export const closableShifts = (): User[] => {
+  const u = me();
+  if (!u || u.rol === 'contador') return [];
+  return ctx.S.users.filter((x) => x.rol !== 'contador' && (x.id === u.id || hasPendingShift(x.id))).sort((a, b) => (a.id === u.id ? -1 : b.id === u.id ? 1 : 0));
+};
+/** Quién puede recibir la caja al cerrar el turno: otro vendedor o administrador activo. */
+export const shiftReceivers = (ownerId: string): User[] => ctx.S.users.filter((x) => x.activo && x.rol !== 'contador' && x.id !== ownerId);
+
+/**
+ * Cierra la caja de `ownerId` (por defecto la propia).
+ * - Otro vendedor o el administrador puede cerrar la caja de alguien que se fue sin cerrarla: quien la cierra la recibe.
+ * - Al cerrar la propia se elige a quién se entrega (`recibe`); esa persona la acepta después, porque pasa a responder por la plata y el stock.
+ */
+export function closeShiftCmd(openingRaw: string, declaredRaw: string, ownerId = '', recibe = '') {
   workflowUser();
   const opening = Number(openingRaw || 0);
   if (!Number.isSafeInteger(opening) || opening < 0) throw new Error('Registra un fondo inicial válido.');
   const dec = Number(declaredRaw);
   if (declaredRaw === '' || !Number.isSafeInteger(dec) || dec < 0) throw new Error('Ingresa un efectivo contado válido.');
   return workflowTransaction(() => {
-    const S = ctx.S, u = me()!;
-    const { mine, refunds, abonos } = pendingShift(u.id);
-    if (!mine.length && !refunds.length && !abonos.length) throw new Error('No hay movimientos nuevos para cerrar.');
+    const S = ctx.S, actor = me()!, ownerIdOk = ownerId || actor.id;
+    const owner = S.users.find((x) => x.id === ownerIdOk);
+    if (!owner || owner.rol === 'contador') throw new Error('Elige de quién es la caja.');
+    const ajena = owner.id !== actor.id;
+    if (!ajena && recibe && !shiftReceivers(owner.id).some((x) => x.id === recibe)) throw new Error('Elige a quién le entregas la caja.');
+    const { mine, refunds, abonos, gastos } = pendingShift(owner.id);
+    if (!mine.length && !refunds.length && !abonos.length && !gastos.length) throw new Error('No hay movimientos nuevos para cerrar.');
+    const gastoCaja = gastos.reduce((n, e) => n + e.monto, 0);
     const net = (method: string) => mine.reduce((n, s) => n + s.pagos.filter((p) => p.medio === method).reduce((a, p) => a + p.monto, 0), 0) - refunds.filter((r) => r.medio === method).reduce((n, r) => n + r.amount, 0) + abonos.filter((a) => a.medio === method).reduce((n, a) => n + a.monto, 0);
-    const esperado = opening + net('efectivo');
-    if (esperado < 0) throw new Error('Las salidas superan los ingresos: registra el efectivo inicial con que se financiaron las devoluciones.');
+    const esperado = opening + net('efectivo') - gastoCaja;
+    if (esperado < 0) throw new Error('Las salidas superan los ingresos: registra el efectivo inicial con que se financiaron las devoluciones y gastos.');
     if (dec > esperado) throw new Error('El efectivo contado no puede ser mayor al esperado según las ventas (' + clp(esperado) + ').');
-    const c = { id: uid('k'), vendedor: u.id, turno: u.turno, fecha: now(), apertura: opening, netoEfectivo: net('efectivo'), esperado, declarado: dec, transf: net('transferencia'), tarjeta: net('tarjeta'), cheques: net('cheque'), fiado: net('credito'),
+    const t = now();
+    const c: Closure = { id: uid('k'), vendedor: owner.id, turno: owner.turno, fecha: t, apertura: opening, netoEfectivo: net('efectivo') - gastoCaja, esperado, declarado: dec, transf: net('transferencia'), tarjeta: net('tarjeta'), cheques: net('cheque'), fiado: net('credito'),
       abonosTotal: abonos.reduce((n, a) => n + a.monto, 0), abonos: abonos.map((a) => a.id), diferencia: dec - esperado, ...shiftSplit(mine), aprobado: '', ventas: mine.map((s) => s.id), devoluciones: refunds.map((r) => r.id),
-      documentosPendientes: mine.filter(needsFiscalReconciliation).map((s) => s.id), registrado: u.rol === 'admin' ? true : undefined };
-    if (c.registrado === undefined) delete c.registrado;
-    mine.forEach((s) => (s.cierre = c.id)); refunds.forEach((r) => (r.cierre = c.id)); abonos.forEach((a) => (a.cierre = c.id));
-    expireOpenRequests(u.id, now());
+      gastoCaja, gastos: gastos.map((e) => e.id), documentosPendientes: mine.filter(needsFiscalReconciliation).map((s) => s.id) };
+    if (ajena) { c.cerradoPor = actor.id; c.recibe = actor.id; c.recibidoPor = actor.id; c.recibidoEn = t; }
+    else if (recibe) c.recibe = recibe;
+    // el administrador no se aprueba a sí mismo: su cierre queda registrado; si cierra la caja de un vendedor, queda aprobada por él
+    if (actor.rol === 'admin') { if (ajena) c.aprobado = actor.id; else c.registrado = true; }
+    mine.forEach((s) => (s.cierre = c.id)); refunds.forEach((r) => (r.cierre = c.id)); abonos.forEach((a) => (a.cierre = c.id)); gastos.forEach((e) => (e.cierre = c.id));
+    expireOpenRequests(owner.id, t);
+    if (ajena) audit('Cierra caja de otro usuario', 'Cierre ' + owner.nombre, '', 'cerrada por ' + actor.nombre + ' (dif. ' + clp(c.diferencia) + ')');
     S.closures.push(c);
     return c;
+  });
+}
+/** Turnos que me entregaron y aún no acepto. */
+export const shiftsToReceive = (userId: string): Closure[] => ctx.S.closures.filter((c) => c.recibe === userId && !c.recibidoPor);
+/** Quien recibe el turno lo acepta: desde ahí responde por la plata y el stock. */
+export function receiveShiftCmd(id: string): void {
+  workflowTransaction(() => {
+    workflowUser();
+    const c = ctx.S.closures.find((x) => x.id === id), u = me()!;
+    if (!c) throw new Error('No se encontró el cierre.');
+    if (c.recibe !== u.id) throw new Error('Este turno se le entregó a otra persona.');
+    if (c.recibidoPor) return;
+    c.recibidoPor = u.id; c.recibidoEn = now();
+    audit('Recibe turno', 'Cierre ' + U(c.vendedor).nombre, 'por recibir', 'recibido por ' + u.nombre + ' (efectivo ' + clp(c.declarado) + ')');
   });
 }
 export function approveCloseCmd(id: string): void {
@@ -297,21 +340,31 @@ export function payLiqCmd(id: string, medio: string): void {
 }
 
 /* ---------- gastos ---------- */
-export interface GastoInput { tipo: 'fijo' | 'variable'; cat: string; fecha: string; monto: string; desc: string; qty: string }
+export interface GastoInput { tipo: 'fijo' | 'variable'; cat: string; fecha: string; monto: string; desc: string; qty: string; /** Se pagó con el efectivo de la caja del turno. */ deCaja?: boolean }
+/** Todos los perfiles (menos el de solo lectura) registran gastos variables; los gastos fijos y las fechas pasadas son del administrador. */
 export function saveGastoCmd(g: GastoInput): string {
-  requireAdmin();
+  const u = me();
+  if (!u || !u.activo || u.rol === 'contador') throw new Error('Tu perfil no registra gastos.');
+  const admin = u.rol === 'admin';
   const m = parseInt(g.monto), desc = g.desc.trim();
   if (!(m > 0)) throw new Error('Ingresa el monto');
   if (g.tipo === 'fijo') {
+    requireAdmin('Solo el administrador registra gastos fijos.');
     ctx.S.fixed.push({ id: uid('f'), cat: g.cat, desc, monto: m, desde: monthKey(now()), hasta: '' });
     audit('Crea gasto fijo', desc || g.cat, '', clp(m) + '/mes');
     return monthKey(now());
   }
-  const d = g.fecha || today(), fecha = d === today() ? now() : new Date(d + 'T12:00').getTime();
-  if (g.cat === 'Compra de gamelas') { const q = parseInt(g.qty); if (!(q > 0)) throw new Error('Ingresa cuántas gamelas compraste'); buyGamelas(q, m, fecha, me()!.id, desc); }
-  else ctx.S.expenses.push({ id: uid('e'), fecha, cat: g.cat, monto: m, desc });
-  audit('Registra gasto', g.cat, '', clp(m));
-  return monthKey(new Date((g.fecha || today()) + 'T12:00').getTime());
+  if (!VAR_CATS.includes(g.cat)) throw new Error('Elige la categoría del gasto.');
+  // el vendedor registra el gasto del momento y siempre sale de su caja
+  const deCaja = admin ? !!g.deCaja : true;
+  const d = admin && !deCaja ? g.fecha || today() : today();
+  if (d > today()) throw new Error('La fecha no puede ser futura.');
+  const fecha = d === today() ? now() : new Date(d + 'T12:00').getTime();
+  const extra = { user: u.id, ...(deCaja ? { deCaja: true, cierre: '' } : {}) };
+  if (g.cat === GAMELA_CAT) { const q = parseInt(g.qty); if (!(q > 0)) throw new Error('Ingresa cuántas gamelas compraste'); buyGamelas(q, m, fecha, u.id, desc, extra); }
+  else ctx.S.expenses.push({ id: uid('e'), fecha, cat: g.cat, monto: m, desc, ...extra });
+  audit('Registra gasto', g.cat, '', clp(m) + (deCaja ? ' · pagado con la caja' : ''));
+  return monthKey(fecha);
 }
 export function updFixedCmd(id: string, montoRaw: string, desc: string, cat: string): void {
   requireAdmin();
@@ -342,6 +395,7 @@ export function updVarCmd(id: string, montoRaw: string, fechaRaw: string, desc: 
   requireAdmin();
   const S = ctx.S, e = S.expenses.find((x) => x.id === id)!, m = parseInt(montoRaw), d = fechaRaw;
   if (!(m > 0)) throw new Error('Monto inválido');
+  if (e.cierre && m !== e.monto) throw new Error('Este gasto ya quedó en un cierre de caja: su monto no se puede cambiar.');
   const antes = `${e.cat} · ${fdate(e.fecha)} · ${clp(e.monto)}${e.cantidad ? ' · ' + e.cantidad + ' gam.' : ''}`;
   if (e.cantidad) {
     const q = parseInt(qtyRaw);
@@ -368,6 +422,7 @@ export function delVarCmd(id: string): void {
   if (!e) return;
   const block = canDelVar(id);
   if (block) throw new Error(block);
+  if (e.cierre) throw new Error('Este gasto ya quedó en un cierre de caja: no se puede eliminar.');
   if (e.cantidad) { const lot = S.lots.find((l) => l.id === e.lot)!; S.moves.push({ id: uid('m'), lot: lot.id, prod: lot.prod, tipo: 'anulación', qty: -e.cantidad, user: me()!.id, fecha: now(), motivo: 'Compra de gamelas eliminada', ref: e.id }); }
   S.expenses = S.expenses.filter((x) => x.id !== id);
   audit('Elimina gasto', e.cat, `${fdate(e.fecha)} · ${clp(e.monto)}${e.desc ? ' · ' + e.desc : ''}`, 'eliminado');

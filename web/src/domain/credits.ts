@@ -33,7 +33,8 @@ export function resolveClient(nombre: string): string {
   return c.id;
 }
 
-export const ABONO_MEDIOS: MedioPago[] = ['efectivo', 'transferencia', 'tarjeta', 'cheque'];
+/** La bodega no recibe cheques: solo efectivo, transferencia y tarjeta. */
+export const ABONO_MEDIOS: MedioPago[] = ['efectivo', 'transferencia', 'tarjeta'];
 export function validAbono(_cid: string, monto: number, medio: string, saldo: number): void {
   if (!Number.isSafeInteger(monto) || monto <= 0) throw new Error('Ingresa el monto del abono.');
   if (monto > saldo) throw new Error(`El abono supera la deuda (${clp(saldo)}).`);

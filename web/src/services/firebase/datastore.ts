@@ -12,10 +12,12 @@ type Doc = Record<string, unknown> & { id: string; _v?: number; _u?: number; _de
 
 /** Colecciones que carga cada rol (las reglas de Firestore niegan el resto). */
 function collectionsFor(rol: Rol, uid: string): { col: CollectionName; where?: QueryConstraint[] }[] {
-  const seller: CollectionName[] = ['users', 'products', 'producers', 'receptions', 'lots', 'moves', 'sales', 'clients', 'creditPayments', 'refunds', 'creditRequests', 'priceRequests', 'comRequests', 'abonoRequests'];
+  // cierres: los turnos se pasan entre vendedores; gastos: los pagados con la caja se descuentan en el cierre
+  const seller: CollectionName[] = ['users', 'products', 'producers', 'receptions', 'lots', 'moves', 'sales', 'clients', 'creditPayments', 'refunds', 'creditRequests', 'priceRequests', 'comRequests', 'abonoRequests', 'closures', 'expenses'];
+  void uid;
   if (rol === 'contador') return (['users', 'products', 'sales', 'clients'] as CollectionName[]).map((col) => ({ col }));
-  if (rol === 'vendedor') return [...seller.map((col) => ({ col })), { col: 'closures', where: [where('vendedor', '==', uid)] }];
-  return ([...seller, 'closures', 'prices', 'liqs', 'audit', 'expenses', 'fixed', 'notes', 'operations', 'adjustments', 'fiscalEvents'] as CollectionName[]).map((col) => ({ col }));
+  if (rol === 'vendedor') return seller.map((col) => ({ col }));
+  return ([...seller, 'prices', 'liqs', 'audit', 'fixed', 'notes', 'operations', 'adjustments', 'fiscalEvents'] as CollectionName[]).map((col) => ({ col }));
 }
 
 const SYNC_MARGIN_MS = 120000;

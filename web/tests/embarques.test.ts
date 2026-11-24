@@ -69,10 +69,10 @@ describe('embarques', () => {
     expect(() => sell([{ lot: a.lineas[0].lot, qty: 11, precio: viejo }])).toThrow(/embarque elegido/);
   });
 
-  it('un vendedor no puede fijar el precio de un embarque al recibir', () => {
+  it('un vendedor no puede registrar recepciones (ni fijar el precio de un embarque)', () => {
     login('gonzalo');
     expect(() => receive(5, '99000')).toThrow(/administrador/);
-    expect(() => receive(5)).not.toThrow();
+    expect(() => receive(5)).toThrow(/administrador/);
   });
 
   it('precios por embarque: igual al general vuelve a seguirlo; distinto queda propio', () => {

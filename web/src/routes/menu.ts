@@ -6,7 +6,7 @@ export interface MenuItem { id: View; t: string; tv?: string; i: string; e: stri
 export const MENU: MenuItem[] = [
   { id: 'dash', t: 'Dashboard', i: 'dash', admin: true, e: '📊' },
   { id: 'pos', t: 'Punto de venta', i: 'pos', e: '🛒' },
-  { id: 'rec', t: 'Recepción / Merma', i: 'rec', e: '🚚' },
+  { id: 'rec', t: 'Recepción / Merma', tv: 'Merma', i: 'rec', e: '🚚' },
   { id: 'inv', t: 'Inventario', i: 'inv', e: '📦' },
   { id: 'sales', t: 'Historial', tv: 'Historial', i: 'sales', e: '🧾', roles: ['admin', 'vendedor', 'contador'] },
   { id: 'caja', t: 'Cierre de caja', i: 'bal', e: '💵' },
@@ -22,4 +22,4 @@ export const menuFor = (u: User | null): MenuItem[] =>
 export const canSee = (u: User | null, v: View): boolean => menuFor(u).some((m) => m.id === v);
 export const bottomNav = (u: User): View[] => (u.rol === 'admin' ? ['dash', 'pos', 'rec', 'inv', 'sales'] : u.rol === 'contador' ? ['sales'] : ['pos', 'rec', 'inv', 'sales', 'caja']);
 export const bottomLabel = (id: View, u: User): string =>
-  id === 'rec' ? 'Recepción' : id === 'sales' ? (u.rol === 'vendedor' ? 'Mis ventas' : 'Ventas') : id === 'dash' ? 'Inicio' : id === 'pos' ? 'Vender' : id === 'caja' ? 'Caja' : MENU.find((m) => m.id === id)!.t;
+  id === 'rec' ? (u.rol === 'admin' ? 'Recepción' : 'Merma') : id === 'sales' ? (u.rol === 'vendedor' ? 'Mis ventas' : 'Ventas') : id === 'dash' ? 'Inicio' : id === 'pos' ? 'Vender' : id === 'caja' ? 'Caja' : MENU.find((m) => m.id === id)!.t;

@@ -21,7 +21,22 @@ export const uid = (p: string): string => p + Math.random().toString(36).slice(2
 
 /** Reloj sustituible en pruebas. */
 let clock: () => number = () => Date.now();
-export const now = (): number => clock();
+/**
+ * Día de trabajo elegido en el calendario del administrador ('' = hoy).
+ * Con un día pasado, toda la app trabaja «como si fuera ese día» (a la hora actual): lo que se ve del día y lo que se registra
+ * (una venta olvidada, una recepción) queda con esa fecha.
+ */
+let workDay = '';
+export const getWorkDay = (): string => workDay;
+export const setWorkDay = (key: string): void => { workDay = /^\d{4}-\d{2}-\d{2}$/.test(key) ? key : ''; if (workDay && workDay >= dayKey(clock())) workDay = ''; };
+/** Hora real (sin el día de trabajo). */
+export const realNow = (): number => clock();
+export const now = (): number => {
+  const t = clock();
+  if (!workDay) return t;
+  const d = new Date(t), [y, m, dd] = workDay.split('-').map(Number);
+  return new Date(y, m - 1, dd, d.getHours(), d.getMinutes(), d.getSeconds(), d.getMilliseconds()).getTime();
+};
 export const setClock = (fn: () => number): void => {
   clock = fn;
 };

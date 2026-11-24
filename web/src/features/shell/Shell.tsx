@@ -9,6 +9,7 @@ import { go, logout } from '../../app/actions';
 import { openPasswordForm } from '../auth/PasswordForm';
 import { AdminBanners } from '../requests/Banners';
 import { AlertsToggle, useRequestAlerts } from '../requests/alerts';
+import { WorkDayBanner, WorkDayPicker } from './WorkDay';
 
 export function Shell({ children }: { children: ReactNode }) {
   const { view, online } = useApp();
@@ -39,6 +40,7 @@ export function Shell({ children }: { children: ReactNode }) {
         <main className="main" id="main-content" tabIndex={-1}>
           <div className="top">
             <div className="mobile-brand"><Logo w={52} mark /></div>
+            {admin && <WorkDayPicker />}
             <div className="me">
               <ThemePicker onChange={() => force((x) => x + 1)} />
               <span className="avatar">{u.nombre[0]}</span>
@@ -47,7 +49,7 @@ export function Shell({ children }: { children: ReactNode }) {
             </div>
           </div>
           {!online && <p className="err" role="status" style={{ margin: '0 0 12px' }}>Sin conexión: los cambios se guardarán cuando vuelva la señal. No cierres la aplicación.</p>}
-          {admin && <><AlertsToggle /><AdminBanners /></>}
+          {admin && <><WorkDayBanner /><AlertsToggle /><AdminBanners /></>}
           {children}
         </main>
       </div>

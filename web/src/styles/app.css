@@ -765,3 +765,13 @@ button,a[role="button"],[role="button"] {touch-action:manipulation;user-select:n
 .alerts-toggle{display:flex;flex-wrap:wrap;align-items:center;gap:10px 14px}
 .alerts-toggle .grow{flex:1 1 240px;min-width:0}
 .alerts-note{display:flex;align-items:flex-start;gap:6px;font-size:13px;margin:0 0 12px}
+
+/* campos numéricos sin flechas de aumento/disminución: un clic o el scroll cambiaba montos sin querer */
+input[type='number'] { -moz-appearance: textfield; appearance: textfield; }
+input[type='number']::-webkit-outer-spin-button, input[type='number']::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+
+/* calendario del administrador */
+.workday { display: flex; align-items: center; gap: 4px; margin-left: auto; margin-right: 12px; }
+.workday .in { width: auto; min-width: 0; padding: 6px 8px; margin: 0; }
+.workday.past .in { border-color: var(--warn); box-shadow: 0 0 0 2px color-mix(in srgb, var(--warn) 35%, transparent); }
+@media (max-width: 760px) { .workday { margin-right: 6px; } .workday .iconbtn { display: none; } }

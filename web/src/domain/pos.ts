@@ -1,8 +1,8 @@
-import type { CartLine, Fuente, PosDraft, Product } from '../types/model';
+import type { CartLine, Fuente, MedioPago, PosDraft, Product } from '../types/model';
 import { audit } from './audit';
 import { CL, comBase, gamId, gamProd, P, Popt, U } from './catalog';
 import { ctx, isAdmin, me } from './ctx';
-import { abonoAvailable, creditBalance, findClientByName, validAbono } from './credits';
+import { ABONO_MEDIOS, abonoAvailable, creditBalance, findClientByName, validAbono } from './credits';
 import { clp, now, pctTxt, qtyFmt, searchText, uid } from './format';
 import { lineBasePrice } from './embarques';
 import { gamCalc } from './gamelas';
@@ -34,9 +34,10 @@ export function cartPrice(c: CartLine): number {
 }
 /** Cantidad ya agregada al carrito desde un embarque. */
 export const cartLotQty = (lot: string): number => ctx.ui.cart.filter((c) => c.lot === lot).reduce((a, c) => a + c.qty, 0);
-export function filteredProducts(q: string, fam: string, adminAll = false): Product[] {
+/** `withEnvase`: incluye la gamela (inventario: es un producto más con stock y precio). */
+export function filteredProducts(q: string, fam: string, adminAll = false, withEnvase = false): Product[] {
   const s = searchText(q.trim());
-  return ctx.S.products.filter((p) => (adminAll || (p.activo && !p.envase)) && (fam === 'Todas' || p.familia === fam) &&
+  return ctx.S.products.filter((p) => (adminAll || (p.activo && (withEnvase || !p.envase))) && (fam === 'Todas' || p.familia === fam) &&
     (!s || searchText(p.nombre).includes(s) || searchText(p.sku).includes(s) || searchText(p.calibre).includes(s)));
 }
 /** Líneas listas para cobrar: precio vigente o especial autorizado, más la línea de gamelas. */
@@ -154,7 +155,7 @@ export function saveAbonoCmd(id: string, monto: number, medio: string): 'solicit
     const saldo = abonoAvailable(id);
     if (!Number.isSafeInteger(monto) || monto <= 0) throw new Error('Ingresa el monto del abono.');
     if (monto > saldo) throw new Error(`El abono supera la deuda (${clp(saldo)}).`);
-    if (!['efectivo', 'transferencia', 'tarjeta', 'cheque'].includes(medio)) throw new Error('Elige cómo paga.');
+    if (!ABONO_MEDIOS.includes(medio as MedioPago)) throw new Error('Elige cómo paga.');
     ctx.S.creditPayments.push({ id: uid('ab'), cliente: id, monto, medio: medio as 'efectivo', ref: '', fecha: now(), user: me()!.id, cierre: '' });
     audit('Abono de crédito', CL(id).nombre, clp(saldo), clp(saldo - monto) + ' · ' + receiptPayment(medio));
   });

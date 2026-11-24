@@ -1,3 +1,4 @@
+import { setWorkDay } from '../domain/format';
 import { DATA_MODE } from '../config/env';
 import { toast, toastError } from '../components/toast';
 import { closeModal } from '../components/modal';
@@ -54,6 +55,7 @@ export async function logout(): Promise<void> {
   closeModal();
   if (DATA_MODE === 'firebase') await import('../services/firebase/push').then((m) => m.disablePush()).catch(() => undefined);
   await services.auth.logout();
+  setWorkDay('');
   store.setSession(null);
   store.setUi(POS_DEFAULT());
   history.replaceState(null, '', '#/');

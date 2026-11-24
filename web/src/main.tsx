@@ -6,10 +6,12 @@ import { App } from './app/App';
 import { bootstrap } from './app/bootstrap';
 import { store } from './state/store';
 import { installTableLabels } from './utils/tableLabels';
+import { installNumberInputGuard } from './utils/numberInputs';
 
 const root = createRoot(document.getElementById('root')!);
 root.render(<StrictMode><ErrorBoundary><App /></ErrorBoundary></StrictMode>);
 installTableLabels();
+installNumberInputGuard();
 if (import.meta.env.VITE_E2E === 'true') void import('./app/testBridge').then((m) => m.installTestBridge());
 bootstrap().catch((e) => {
   console.error(e);

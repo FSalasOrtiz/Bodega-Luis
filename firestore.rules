@@ -26,7 +26,8 @@ service cloud.firestore {
     function idMatches(id) { return data().id == id; }
     function isTombstone() { return data().keys().hasOnly(['id', '_deleted', '_u', '_v']) && data()._deleted == true; }
     // la fecha que pone el dispositivo no puede alejarse más de 15 minutos de la hora del servidor
-    function nowish(field) { return data()[field] is number && math.abs(data()[field] - request.time.toMillis()) < 900000; }
+    // el administrador puede registrar en un día pasado (calendario), nunca en el futuro
+    function nowish(field) { return data()[field] is number && (math.abs(data()[field] - request.time.toMillis()) < 900000 || (isAdmin() && data()[field] < request.time.toMillis() + 900000)); }
     function mine(field) { return data()[field] == request.auth.uid; }
 
     // Regla genérica para colecciones operativas:
@@ -73,7 +74,8 @@ service cloud.firestore {
     // ---------- stock ----------
     match /receptions/{id} {
       allow read: if staff();
-      allow create: if canCreate(staff(), id) && mine('user') && nowish('fecha') && data().anulada == false;
+      // la recepción la registra solo Luis (los vendedores no ven costos ni fijan precios)
+      allow create: if canCreate(isAdmin(), id) && mine('user') && nowish('fecha') && data().anulada == false;
       // solo el administrador anula (corrige) una recepción
       allow update: if canUpdate(isAdmin());
     }
@@ -102,7 +104,9 @@ service cloud.firestore {
       allow create: if canCreate(staff(), id) && mine('vendedor') && nowish('fecha') && data().total is number && data().estado == 'vigente';
       allow update: if canUpdate(isAdmin())
         // el vendedor solo pide anulación o cierra su turno sobre sus propias ventas
-        || canUpdate(isSeller() && resource.data.vendedor == request.auth.uid && onlyChanged(['solicitud', 'solicitudFecha', 'workflowEvents', 'cierre']));
+        || canUpdate(isSeller() && resource.data.vendedor == request.auth.uid && onlyChanged(['solicitud', 'solicitudFecha', 'workflowEvents', 'cierre']))
+        // al cerrar la caja de otro vendedor (que se fue sin cerrarla) se marcan sus ventas aún sin cierre
+        || canUpdate(isSeller() && resource.data.cierre == '' && onlyChanged(['cierre']));
     }
     match /operations/{id} {
       allow read: if isAdmin();
@@ -112,7 +116,7 @@ service cloud.firestore {
     match /refunds/{id} {
       allow read: if staff();
       allow create: if canCreate(isAdmin(), id);
-      allow update: if canUpdate(isAdmin()) || canUpdate(isSeller() && resource.data.cashier == request.auth.uid && onlyChanged(['cierre']));
+      allow update: if canUpdate(isAdmin()) || canUpdate(isSeller() && !('cierre' in resource.data && resource.data.cierre != '') && onlyChanged(['cierre']));
     }
     match /adjustments/{id} {
       allow read: if isAdmin();
@@ -125,10 +129,15 @@ service cloud.firestore {
 
     // ---------- caja ----------
     match /closures/{id} {
-      allow read: if isAdmin() || (isSeller() && resource.data.vendedor == request.auth.uid);
-      allow create: if canCreate(staff(), id) && mine('vendedor') && nowish('fecha') && data().aprobado == '';
-      // solo Luis aprueba y autoriza la recuperación de un faltante
-      allow update: if canUpdate(isAdmin()) && onlyChanged(['aprobado', 'recuperado', 'recuperadoPor', 'recuperadoEn', 'recuperaciones']);
+      // los turnos se pasan entre vendedores: todos ven los cierres
+      allow read: if staff();
+      // la caja propia, o la de otro que se fue sin cerrarla (quien la cierra la recibe); el administrador que cierra la de un vendedor la deja aprobada
+      allow create: if canCreate(staff(), id) && nowish('fecha')
+        && (mine('vendedor') || (mine('cerradoPor') && mine('recibidoPor')))
+        && (data().aprobado == '' || (isAdmin() && mine('aprobado') && !mine('vendedor')));
+      // solo Luis aprueba y autoriza la recuperación de un faltante; quien recibe el turno lo acepta
+      allow update: if (canUpdate(isAdmin()) && onlyChanged(['aprobado', 'recuperado', 'recuperadoPor', 'recuperadoEn', 'recuperaciones']))
+        || (canUpdate(staff() && resource.data.recibe == request.auth.uid && !('recibidoPor' in resource.data)) && onlyChanged(['recibidoPor', 'recibidoEn']) && mine('recibidoPor'));
     }
 
     // ---------- créditos ----------
@@ -141,24 +150,27 @@ service cloud.firestore {
     match /creditPayments/{id} {
       allow read: if staff();
       allow create: if canCreate(isAdmin(), id) && data().monto is int && data().monto > 0;
-      allow update: if canUpdate(isAdmin()) || canUpdate(isSeller() && resource.data.user == request.auth.uid && onlyChanged(['cierre']));
+      allow update: if canUpdate(isAdmin()) || canUpdate(isSeller() && resource.data.cierre == '' && onlyChanged(['cierre']));
     }
 
     // ---------- autorizaciones (crédito, precio, comisión, pago de deuda) ----------
     match /creditRequests/{id} {
       allow read: if staff();
       allow create: if canCreate(isSeller(), id) && mine('user') && data().estado == 'pendiente';
-      allow update: if canUpdate(isAdmin()) || canUpdate(isSeller() && resource.data.user == request.auth.uid && onlyChanged(['estado', 'resueltoEn', 'saleId']) && data().estado in ['cancelada', 'usada', 'vencida']);
+      allow update: if canUpdate(isAdmin()) || canUpdate(isSeller() && resource.data.user == request.auth.uid && onlyChanged(['estado', 'resueltoEn', 'saleId']) && data().estado in ['cancelada', 'usada', 'vencida'])
+        || canUpdate(isSeller() && resource.data.estado in ['pendiente', 'aprobada'] && onlyChanged(['estado', 'resueltoEn']) && data().estado == 'vencida');
     }
     match /priceRequests/{id} {
       allow read: if staff();
       allow create: if canCreate(isSeller(), id) && mine('user') && data().estado == 'pendiente';
-      allow update: if canUpdate(isAdmin()) || canUpdate(isSeller() && resource.data.user == request.auth.uid && onlyChanged(['estado', 'resueltoEn', 'saleId']) && data().estado in ['cancelada', 'usada', 'vencida']);
+      allow update: if canUpdate(isAdmin()) || canUpdate(isSeller() && resource.data.user == request.auth.uid && onlyChanged(['estado', 'resueltoEn', 'saleId']) && data().estado in ['cancelada', 'usada', 'vencida'])
+        || canUpdate(isSeller() && resource.data.estado in ['pendiente', 'aprobada'] && onlyChanged(['estado', 'resueltoEn']) && data().estado == 'vencida');
     }
     match /comRequests/{id} {
       allow read: if staff();
       allow create: if canCreate(isSeller(), id) && mine('user') && data().estado == 'pendiente';
-      allow update: if canUpdate(isAdmin()) || canUpdate(isSeller() && resource.data.user == request.auth.uid && onlyChanged(['estado', 'resueltoEn', 'saleId']) && data().estado in ['cancelada', 'usada', 'vencida']);
+      allow update: if canUpdate(isAdmin()) || canUpdate(isSeller() && resource.data.user == request.auth.uid && onlyChanged(['estado', 'resueltoEn', 'saleId']) && data().estado in ['cancelada', 'usada', 'vencida'])
+        || canUpdate(isSeller() && resource.data.estado in ['pendiente', 'aprobada'] && onlyChanged(['estado', 'resueltoEn']) && data().estado == 'vencida');
     }
     match /abonoRequests/{id} {
       allow read: if staff();
@@ -172,10 +184,11 @@ service cloud.firestore {
       allow create: if canCreate(isAdmin(), id);
       allow update: if canUpdate(isAdmin());
     }
+    // gastos variables: todos los registran; el vendedor, solo los de hoy pagados con su caja (se descuentan en el cierre)
     match /expenses/{id} {
-      allow read: if isAdmin();
-      allow create: if canCreate(isAdmin(), id);
-      allow update: if canUpdate(isAdmin());
+      allow read: if staff();
+      allow create: if canCreate(isAdmin(), id) || (canCreate(isSeller(), id) && mine('user') && data().deCaja == true && data().cierre == '' && nowish('fecha') && data().monto is int && data().monto > 0);
+      allow update: if canUpdate(isAdmin()) || canUpdate(isSeller() && resource.data.deCaja == true && resource.data.cierre == '' && onlyChanged(['cierre']));
     }
     match /fixed/{id} {
       allow read: if isAdmin();

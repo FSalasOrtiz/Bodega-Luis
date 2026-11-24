@@ -4,7 +4,9 @@ import { closeModal, openModal } from '../../components/modal';
 import { U } from '../../domain/catalog';
 import { ctx, isAdmin, me } from '../../domain/ctx';
 import { clp, fdt } from '../../domain/format';
-import { approveCloseCmd, closeShiftCmd, pendingShift, recoverShortageCmd, shiftSplit } from '../../domain/operations';
+import { approveCloseCmd, closableShifts, closeShiftCmd, pendingShift, receiveShiftCmd, recoverShortageCmd, shiftReceivers, shiftSplit, shiftsToReceive } from '../../domain/operations';
+import { Icon } from '../../components/icons';
+import { openGasto } from '../shared/Gasto';
 import { shortagePending, shortageRecoveries } from '../../domain/balance';
 import { pendingAbonoRequests } from '../../domain/requests';
 import { saleCard, saleCash, saleTr } from '../../domain/sales';
@@ -67,43 +69,64 @@ export function Cash() {
   useApp();
   const u = me()!;
   const [opening, setOpening] = useState('0'), [dec, setDec] = useState(''), [page, setPage] = useState(1), [openId, setOpenId] = useState('');
-  const { mine, refunds, abonos } = pendingShift(u.id);
+  const [ownerSel, setOwner] = useState(u.id), [recibe, setRecibe] = useState('');
+  // la caja de otro (que se fue sin cerrarla) también se puede cerrar: quien la cierra la recibe
+  const owners = closableShifts(), owner = owners.some((x) => x.id === ownerSel) ? ownerSel : u.id, ajena = owner !== u.id;
+  const receivers = shiftReceivers(owner), rec = receivers.some((x) => x.id === recibe) ? recibe : '';
+  const { mine, refunds, abonos, gastos } = pendingShift(owner);
   const returns = (m: string) => refunds.filter((r) => r.medio === m).reduce((n, r) => n + r.amount, 0);
   const ab = (m: string) => abonos.filter((a) => a.medio === m).reduce((n, a) => n + a.monto, 0);
-  const fiado = mine.reduce((a, s) => a + saleCredit(s), 0), cheques = ab('cheque');
-  const esp = mine.reduce((a, s) => a + saleCash(s), 0) - returns('efectivo') + ab('efectivo');
+  const fiado = mine.reduce((a, s) => a + saleCredit(s), 0), gastoCaja = gastos.reduce((n, e) => n + e.monto, 0);
+  const esp = mine.reduce((a, s) => a + saleCash(s), 0) - returns('efectivo') + ab('efectivo') - gastoCaja;
   const tr = mine.reduce((a, s) => a + saleTr(s), 0) - returns('transferencia') + ab('transferencia');
-  const card = mine.reduce((a, s) => a + saleCard(s), 0) - returns('tarjeta');
-  const cl = ctx.S.closures.filter((c) => isAdmin() || c.vendedor === u.id).sort((a, b) => b.fecha - a.fecha), pg = paginate(cl, page, 7); // 7 filas: el historial queda a la altura de «Cerrar mi turno»
+  const card = mine.reduce((a, s) => a + saleCard(s), 0) - returns('tarjeta') + ab('tarjeta');
+  const abonosCaja = abonos.reduce((n, a) => n + a.monto, 0);
+  // historial: los propios, los que cerré o recibí; el administrador ve todos
+  const cl = ctx.S.closures.filter((c) => isAdmin() || c.vendedor === u.id || c.cerradoPor === u.id || c.recibe === u.id).sort((a, b) => b.fecha - a.fecha), pg = paginate(cl, page, 7); // 7 filas: el historial queda a la altura de «Cerrar mi turno»
   const split = shiftSplit(mine), open = Number(opening) || 0;
-  const pend = pendingAbonoRequests().filter((r) => r.user === u.id && r.medio === 'efectivo').reduce((n, r) => n + r.monto, 0);
+  const pend = pendingAbonoRequests().filter((r) => r.user === owner && r.medio === 'efectivo').reduce((n, r) => n + r.monto, 0);
   const maxDec = esp + open, over = dec !== '' && Number(dec) > maxDec;
+  const toReceive = shiftsToReceive(u.id);
   const close = async () => {
-    const c = await exec(() => closeShiftCmd(opening, dec), (r) => (r.registrado ? 'Cierre registrado.' : 'Turno cerrado. Luis lo verá para aprobarlo.'));
-    if (c) { setOpening('0'); setDec(''); }
+    const c = await exec(() => closeShiftCmd(opening, dec, owner, ajena ? '' : rec), (r) => (ajena ? `Caja de ${U(owner).nombre} cerrada. Quedas a cargo del turno.` : r.registrado ? 'Cierre registrado.' : r.recibe ? `Turno cerrado. ${U(r.recibe).nombre} debe aceptarlo.` : 'Turno cerrado. Luis lo verá para aprobarlo.'));
+    if (c) { setOpening('0'); setDec(''); setOwner(u.id); setRecibe(''); }
   };
+  const title = ajena ? `Cerrar la caja de ${U(owner).nombre}` : 'Cerrar mi turno';
   return (
     <>
-      <Head t="Cierre de caja" />
+      <Head t="Cierre de caja" acts={<button className="btn ghost" onClick={() => openGasto(undefined, true)}><Icon n="plus" s={18} />Gasto pagado con la caja</button>} />
+      {toReceive.length > 0 && <div className="card" style={{ marginBottom: 14 }}><h3>Turnos que te entregaron</h3>
+        <p className="muted">Al aceptar quedas a cargo: revisa que cuadren la plata y el stock.</p>
+        <div className="rows">{toReceive.map((c) => (
+          <div key={c.id}><div className="grow"><b>{U(c.vendedor).nombre} · {fdt(c.fecha)}</b><span>Efectivo entregado {clp(c.declarado)} · transferencias {clp(c.transf)} · tarjetas {clp(c.tarjeta || 0)}{c.diferencia ? ` · diferencia ${clp(c.diferencia)}` : ''}</span></div>
+            <button className="btn sm pri" onClick={() => void exec(() => receiveShiftCmd(c.id), 'Turno recibido.')}>Aceptar turno</button></div>
+        ))}</div></div>}
       <div className="grid g3 stack eq">
-        <div className="card"><h3>Cerrar mi turno</h3>
+        <div className="card"><h3>{title}</h3>
+          {owners.length > 1 && <div className="f"><label htmlFor="cash-owner">Caja de</label>
+            <select id="cash-owner" className="in" value={owner} onChange={(e) => { setOwner(e.target.value); setDec(''); setOpening('0'); }}>
+              {owners.map((x) => <option key={x.id} value={x.id}>{x.id === u.id ? `Mi caja (${x.nombre})` : `${x.nombre} · sin cerrar`}</option>)}</select>
+            {ajena && <small className="muted">{U(owner).nombre} se fue sin cerrar su caja. Al cerrarla tú la recibes y respondes por la plata.</small>}</div>}
           <div className="rows">
             <div><div className="grow"><b>Ventas sin cerrar</b></div><b>{mine.length}</b></div>
             <div><div className="grow"><b>Devoluciones de dinero</b></div><b>{refunds.length}</b></div>
             <div><div className="grow"><b>Efectivo esperado</b></div><b className="num" id="closing-expected">{clp(esp + open)}</b></div>
             <div><div className="grow"><b>Transferencias</b></div><b className="num">{clp(tr)}</b></div>
             <div><div className="grow"><b>Tarjetas</b></div><b className="num">{clp(card)}</b></div>
-            <div><div className="grow"><b>Cheques recibidos</b><span>abonos de crédito</span></div><b className="num">{clp(cheques)}</b></div>
-            <div><div className="grow"><b>Abonos de crédito</b><span>{abonos.length} abonos · ya sumados arriba</span></div><b className="num">{clp(abonos.reduce((n, a) => n + a.monto, 0))}</b></div>
-            <div><div className="grow"><b>Vendido a crédito</b><span>no entra a la caja</span></div><b className="num" style={{ color: 'var(--warn)' }}>{clp(fiado)}</b></div>
+            {gastos.length > 0 && <div><div className="grow"><b>Gastos pagados con la caja</b><span>{gastos.map((e) => e.desc || e.cat).join(' · ')} · ya restados del efectivo</span></div><b className="num" style={{ color: 'var(--bad)' }}>− {clp(gastoCaja)}</b></div>}
+            <div><div className="grow"><b>Pagos de créditos</b><span>{abonos.length} pago{abonos.length === 1 ? '' : 's'} de deuda · ya sumados arriba</span></div><b className="num">{clp(abonosCaja)}</b></div>
+            <div><div className="grow"><b>Vendido a crédito (fiado)</b><span>{mine.filter((s) => saleCredit(s) > 0).length} venta{mine.filter((s) => saleCredit(s) > 0).length === 1 ? '' : 's'} · no entra a la caja</span></div><b className="num" style={{ color: 'var(--warn)' }}>{clp(fiado)}</b></div>
           </div>
           <SplitRows x={split} />
           <div className="f" style={{ marginTop: 12 }}><label htmlFor="opening">Fondo inicial / efectivo recibido del turno anterior</label><input id="opening" className="in num" type="number" min="0" inputMode="numeric" value={opening} onChange={(e) => setOpening(e.target.value)} /></div>
           <div className="f" style={{ marginTop: 12 }}><label htmlFor="dec">Efectivo contado en caja</label><input id="dec" className="in num" type="number" min="0" max={maxDec} inputMode="numeric" aria-invalid={over || undefined} aria-describedby="dif" style={{ fontSize: 22, fontWeight: 700 }} value={dec} onChange={(e) => setDec(e.target.value)} /></div>
-          {pend > 0 && <p className="err">Tienes {clp(pend)} en pagos de deuda en efectivo esperando a Luis. No se suman a lo esperado hasta que los autorice.</p>}
+          {!ajena && receivers.length > 0 && <div className="f" style={{ marginTop: 12 }}><label htmlFor="cash-to">Entrego la caja a</label>
+            <select id="cash-to" className="in" value={rec} onChange={(e) => setRecibe(e.target.value)}><option value="">Nadie: termina el día</option>{receivers.map((x) => <option key={x.id} value={x.id}>{x.nombre}{x.rol === 'admin' ? ' (administrador)' : ''}</option>)}</select>
+            {rec && <small className="muted">{U(rec).nombre} tendrá que aceptar el turno: desde ahí responde por la plata y el stock.</small>}</div>}
+          {pend > 0 && <p className="err">Hay {clp(pend)} en pagos de deuda en efectivo esperando a Luis. No se suman a lo esperado hasta que los autorice.</p>}
           {over ? <p id="dif" className="err" role="alert">El efectivo contado no puede ser mayor al esperado ({clp(maxDec)}).</p>
             : <p id="dif" className="muted">{dec !== '' ? 'Diferencia: ' + clp(Number(dec || 0) - open - esp) : 'Diferencia: —'}</p>}
-          <button className="btn pri big" disabled={over || !(mine.length || refunds.length || abonos.length)} onClick={() => void close()}>Declarar y cerrar turno</button>
+          <button className="btn pri big" disabled={over || !(mine.length || refunds.length || abonos.length || gastos.length)} onClick={() => void close()}>{ajena ? 'Declarar y cerrar su caja' : 'Declarar y cerrar turno'}</button>
         </div>
         <div className="card span2 fill"><h3>Historial de cierres</h3>
           <div className="scroll"><table className="tbl m-cards"><thead><tr><th>Fecha</th><th>Vendedor</th><th className="right">Esperado</th><th className="right">Declarado</th><th className="right">Diferencia</th><th>Estado</th></tr></thead>
@@ -120,12 +143,15 @@ export function Cash() {
 function ClosureRow({ c, open, onToggle }: { c: Closure; open: boolean; onToggle: () => void }) {
   const det: [string, React.ReactNode][] = [
     ['Efectivo del turno', clp(c.netoEfectivo ?? c.esperado - (c.apertura || 0))], ['Fondo inicial', clp(c.apertura || 0)], ['Transferencias', clp(c.transf)], ['Tarjetas', clp(c.tarjeta || 0)],
-    ['Pagos de crédito', clp(c.abonosTotal || 0) + (c.cheques ? ` (${clp(c.cheques)} cheque)` : '')], ['Vendido a crédito', clp(c.fiado || 0)], ['Consignación', splitTxt(c) || '—'],
+    ['Pagos de créditos', clp(c.abonosTotal || 0) + (c.cheques ? ` (${clp(c.cheques)} cheque)` : '')], ['Vendido a crédito (fiado)', clp(c.fiado || 0)], ['Consignación', splitTxt(c) || '—'],
   ];
+  if (c.gastoCaja) det.push(['Gastos pagados con la caja', '− ' + clp(c.gastoCaja)]);
+  if (c.cerradoPor) det.push(['Cerró la caja', U(c.cerradoPor).nombre]);
+  if (c.recibe) det.push(['Entregó el turno a', U(c.recibe).nombre + (c.recibidoPor ? ' · aceptado ' + fdt(c.recibidoEn || c.fecha) : ' · por aceptar')]);
   return (
     <>
       <tr className="click" aria-expanded={open} tabIndex={0} onClick={onToggle} onKeyDown={(e) => { if ((e.key === 'Enter' || e.key === ' ') && e.target === e.currentTarget) { e.preventDefault(); onToggle(); } }}>
-        <td className="when"><span className="chev" aria-hidden="true">›</span> {fdt(c.fecha)}<span className="sr-only">{open ? ', ocultar detalle' : ', ver detalle'}</span></td><td className="nowrap">{U(c.vendedor).nombre}<br /><small className="muted">{c.turno}</small></td>
+        <td className="when"><span className="chev" aria-hidden="true">›</span> {fdt(c.fecha)}<span className="sr-only">{open ? ', ocultar detalle' : ', ver detalle'}</span></td><td className="nowrap">{U(c.vendedor).nombre}<br /><small className="muted">{c.turno}{c.cerradoPor ? ' · cerró ' + U(c.cerradoPor).nombre : ''}</small></td>
         <td className="right num">{clp(c.esperado)}</td><td className="right num">{clp(c.declarado)}</td>
         <td className="right num" style={{ color: c.diferencia ? 'var(--bad)' : 'var(--g700)' }}><b>{clp(c.diferencia)}</b>{shortagePending(c) > 0 && <><br /><span className="pill warn" style={{ marginTop: 4 }}>por recuperar</span></>}</td>
         <td onClick={(e) => e.stopPropagation()}>{c.registrado ? <span className="pill mute">Registrado</span> : c.aprobado ? <span className="pill ok">Aprobado · {U(c.aprobado).nombre}</span> : isAdmin() ? <button className="btn sm pri" onClick={() => void exec(() => approveCloseCmd(c.id))}>Aprobar</button> : <span className="pill warn">Pendiente</span>}</td>

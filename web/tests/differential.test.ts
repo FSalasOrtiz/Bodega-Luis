@@ -165,7 +165,10 @@ describe('Dominio TS ≡ prototipo', () => {
     const p = ctx.S.products.find((x) => x.sku === 'TOM-C8')!;
     // recepción
     runProto(`recForm={productor:'pr1',modalidad:'consignación',lineas:[{prod:${JSON.stringify(p.id)},qty:'12',costo:''}]};toast=()=>{};recDoc=()=>{};saveRec()`);
+    // la recepción la registra solo el administrador (nov-2026); la merma y el cierre siguen siendo del vendedor
+    asUser(ctx.S.users.find((u) => u.rol === 'admin')!.id);
     saveReceptionCmd({ productor: 'pr1', modalidad: 'consignación', lineas: [{ prod: p.id, qty: '12', costo: '' }] });
+    asUser('u3');
     expect(prodStock(p.id)).toBe(runProto(`prodStock(${JSON.stringify(p.id)})`));
     // merma de 5: el prototipo la saca FIFO; ahora el usuario elige el embarque. Eligiendo el más antiguo, el resultado es el mismo.
     runProto(`mermaF={prod:${JSON.stringify(p.id)},qty:'5',src:'consig'};saveMerma()`);

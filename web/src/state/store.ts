@@ -63,6 +63,10 @@ export const store = {
   setView(view: View): void {
     publish({ view });
   },
+  /** Vuelve a dibujar (p. ej. al cambiar el día de trabajo del calendario). */
+  refresh(): void {
+    publish({});
+  },
   setOnline(online: boolean): void {
     if (online !== snap.online) publish({ online });
   },

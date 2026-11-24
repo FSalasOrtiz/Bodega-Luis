@@ -55,7 +55,9 @@ export const sumMoneyDay = (key: string, medio: string): number =>
   moneyEntries().filter((e) => dayKey(e.fecha) === key && e.medio === medio).reduce((n, e) => n + e.monto, 0);
 
 export const FIX_CATS = ['Arriendo', 'Sueldos', 'Luz y agua', 'Internet / teléfono', 'Patente', 'Otros fijos'];
-export const VAR_CATS = ['Compra de gamelas', 'Flete', 'Combustible', 'Mantención', 'Bolsas / insumos', 'Otros'];
+export const GAMELA_CAT = 'Compra de gamelas';
+/** «Compra de gamelas» va al final: es la única categoría que pide cantidad (antes era la primera y todo gasto preguntaba gamelas). */
+export const VAR_CATS = ['Colación / alimentación', 'Flete', 'Combustible', 'Mantención', 'Bolsas / insumos', 'Otros', GAMELA_CAT];
 export const fixedFor = (mk: string): FixedExpense[] => ctx.S.fixed.filter((f) => f.desde <= mk && (!f.hasta || f.hasta >= mk));
 export const varFor = (mk: string): Expense[] => ctx.S.expenses.filter((e) => monthKey(e.fecha) === mk);
 

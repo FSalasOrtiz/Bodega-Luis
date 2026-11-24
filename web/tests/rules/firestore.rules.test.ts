@@ -6,7 +6,7 @@
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { assertFails, assertSucceeds, initializeTestEnvironment, type RulesTestEnvironment } from '@firebase/rules-unit-testing';
-import { doc, getDoc, setDoc, updateDoc, deleteDoc, getDocs, collection, query, where, serverTimestamp, type Firestore } from 'firebase/firestore';
+import { doc, getDoc, setDoc, updateDoc, deleteDoc, getDocs, collection, serverTimestamp, type Firestore } from 'firebase/firestore';
 import { afterAll, beforeAll, beforeEach, describe, it } from 'vitest';
 
 let env: RulesTestEnvironment;
@@ -97,12 +97,41 @@ describe('vendedor', () => {
     await assertFails(updateDoc(doc(as('gonzalo'), 'users', 'gonzalo'), { clave: '123456', _v: 3, _u: serverTimestamp() }));
     await assertFails(updateDoc(doc(as('gonzalo'), 'users', 'samuel'), { cambiosClave: [now()], _v: 2, _u: serverTimestamp() }));
   });
-  it('no ve liquidaciones, bitácora ni cierres de otro vendedor', async () => {
+  it('no ve liquidaciones ni bitácora; sí los cierres (los turnos se pasan entre vendedores)', async () => {
     await assertFails(getDoc(doc(as('gonzalo'), 'liqs', 'q1')));
     await assertFails(getDoc(doc(as('gonzalo'), 'audit', 'a1')));
-    await assertFails(getDoc(doc(as('gonzalo'), 'closures', 'k1')));
-    await assertSucceeds(getDocs(query(collection(as('samuel'), 'closures'), where('vendedor', '==', 'samuel'))));
-    await assertFails(getDocs(collection(as('samuel'), 'closures')));
+    await assertSucceeds(getDoc(doc(as('gonzalo'), 'closures', 'k1')));
+    await assertSucceeds(getDocs(collection(as('samuel'), 'closures')));
+    await assertFails(getDocs(collection(as('genesis'), 'closures')));
+  });
+  it('no registra recepciones (solo Luis)', async () => {
+    await assertFails(setDoc(doc(as('gonzalo'), 'receptions', 'r1'), create({ id: 'r1', user: 'gonzalo', fecha: now(), anulada: false, lineas: [] })));
+    await assertSucceeds(setDoc(doc(as('luis'), 'receptions', 'r2'), create({ id: 'r2', user: 'luis', fecha: now(), anulada: false, lineas: [] })));
+  });
+  it('registra un gasto de hoy pagado con su caja; no gastos ajenos, de otro día ni fuera de la caja', async () => {
+    const g = (id: string, extra: Record<string, unknown> = {}) => create({ id, fecha: now(), cat: 'Otros', monto: 20000, desc: 'desayuno', user: 'gonzalo', deCaja: true, cierre: '', ...extra });
+    await assertSucceeds(setDoc(doc(as('gonzalo'), 'expenses', 'e1'), g('e1')));
+    await assertFails(setDoc(doc(as('gonzalo'), 'expenses', 'e2'), g('e2', { user: 'samuel' })));
+    await assertFails(setDoc(doc(as('gonzalo'), 'expenses', 'e3'), g('e3', { fecha: now() - 2 * 864e5 })));
+    await assertFails(setDoc(doc(as('gonzalo'), 'expenses', 'e4'), g('e4', { deCaja: false })));
+    await assertFails(setDoc(doc(as('gonzalo'), 'fixed', 'f1'), create({ id: 'f1', cat: 'Arriendo', monto: 1 })));
+    // al cerrar la caja se marca el gasto con el cierre (solo ese campo)
+    await assertSucceeds(updateDoc(doc(as('samuel'), 'expenses', 'e1'), { cierre: 'k9', _v: 2, _u: serverTimestamp() }));
+    await assertFails(updateDoc(doc(as('samuel'), 'expenses', 'e1'), { cierre: 'k10', _v: 3, _u: serverTimestamp() }));
+  });
+  it('cierra la caja de otro vendedor que se fue sin cerrarla (y la recibe él)', async () => {
+    const k = (id: string, extra: Record<string, unknown>) => create({ id, vendedor: 'samuel', fecha: now(), aprobado: '', ...extra });
+    await assertSucceeds(updateDoc(doc(as('gonzalo'), 'sales', 's2'), { cierre: 'k2', _v: 2, _u: serverTimestamp() }));
+    await assertFails(updateDoc(doc(as('gonzalo'), 'sales', 's2'), { cierre: 'k3', _v: 3, _u: serverTimestamp() }));
+    await assertSucceeds(setDoc(doc(as('gonzalo'), 'closures', 'k2'), k('k2', { cerradoPor: 'gonzalo', recibe: 'gonzalo', recibidoPor: 'gonzalo' })));
+    await assertFails(setDoc(doc(as('gonzalo'), 'closures', 'k3'), k('k3', {})));
+    await assertFails(setDoc(doc(as('gonzalo'), 'closures', 'k4'), k('k4', { cerradoPor: 'gonzalo', recibidoPor: 'gonzalo', aprobado: 'gonzalo' })));
+  });
+  it('quien recibe el turno lo acepta; nadie más', async () => {
+    await env.withSecurityRulesDisabled(async (c) => { await setDoc(doc(c.firestore(), 'closures', 'k5'), { id: 'k5', vendedor: 'samuel', recibe: 'gonzalo', aprobado: '', _v: 1 }); });
+    await assertFails(updateDoc(doc(as('samuel'), 'closures', 'k5'), { recibidoPor: 'samuel', recibidoEn: now(), _v: 2, _u: serverTimestamp() }));
+    await assertFails(updateDoc(doc(as('gonzalo'), 'closures', 'k5'), { recibidoPor: 'gonzalo', recibidoEn: now(), declarado: 0, _v: 2, _u: serverTimestamp() }));
+    await assertSucceeds(updateDoc(doc(as('gonzalo'), 'closures', 'k5'), { recibidoPor: 'gonzalo', recibidoEn: now(), _v: 2, _u: serverTimestamp() }));
   });
   it('no aprueba cierres ni autoriza sus propias solicitudes', async () => {
     await assertFails(updateDoc(doc(as('samuel'), 'closures', 'k1'), { aprobado: 'samuel', _v: 2, _u: serverTimestamp() }));
@@ -138,6 +167,13 @@ describe('embarques (precio por lote)', () => {
 });
 
 describe('administrador', () => {
+  it('registra en un día pasado (calendario), pero no en el futuro', async () => {
+    await assertSucceeds(setDoc(doc(as('luis'), 'sales', 'b1'), sale('b1', 'luis', { fecha: now() - 3 * 864e5 })));
+    await assertFails(setDoc(doc(as('luis'), 'sales', 'b2'), sale('b2', 'luis', { fecha: now() + 3 * 864e5 })));
+  });
+  it('cierra la caja de un vendedor y la deja aprobada', async () => {
+    await assertSucceeds(setDoc(doc(as('luis'), 'closures', 'k6'), create({ id: 'k6', vendedor: 'samuel', fecha: now(), aprobado: 'luis', cerradoPor: 'luis', recibe: 'luis', recibidoPor: 'luis' })));
+  });
   it('cambia precios con versión válida, aprueba cierres y ve liquidaciones', async () => {
     await assertSucceeds(updateDoc(doc(as('luis'), 'products', 'p1'), { precio: 21000, _v: 2, _u: serverTimestamp() }));
     await assertFails(updateDoc(doc(as('luis'), 'products', 'p1'), { precio: 15000.5, _v: 3, _u: serverTimestamp() }));

@@ -18,7 +18,7 @@ import { intent } from '../../app/intent';
 export function Inventory() {
   useApp();
   const [q, setQ] = useState(''), [fam, setFam] = useState(() => { const f = intent.invFam || 'Todas'; intent.invFam = undefined; return f; }), [page, setPage] = useState(1);
-  const admin = isAdmin(), ps = filteredProducts(q, fam, admin), k = today(), pg = paginate(ps, page, PAGE_LONG);
+  const admin = isAdmin(), ps = filteredProducts(q, fam, admin, true), k = today(), pg = paginate(ps, page, PAGE_LONG);
   return (
     <>
       <Head t="Inventario" acts={admin && <><button className="btn ghost" onClick={openNewFamily}><Icon n="plus" s={18} />Nueva familia</button><button className="btn pri" onClick={() => openEditProduct('')}><Icon n="plus" s={18} />Nuevo producto</button></>} />
@@ -77,14 +77,14 @@ function ProductSheet({ pid }: { pid: string }) {
       {admin && <><h3 style={{ fontSize: 15, margin: '14px 0 6px' }}>Movimientos</h3>
         <div className="scroll"><table className="tbl"><tbody>{mvPg.rows.map((m) => <tr key={m.id}><td className="when">{fdt(m.fecha)}</td><td>{m.tipo}</td><td>{U(m.user).nombre}</td><td className="right num" style={{ color: m.qty < 0 ? 'var(--bad)' : 'var(--g700)' }}>{m.qty > 0 ? '+' : ''}{qtyFmt(m.qty, p.unidad)}</td></tr>)}</tbody></table></div>
         <Pager pg={mvPg} onPage={setMvPage} label="Páginas de movimientos del producto" /></>}
-      <div className="acts">{admin && <><button className="btn ghost" onClick={() => openAdjustStock(pid)}>Ajustar stock</button><button className="btn ghost" onClick={() => openEditProduct(pid)}>Editar</button>{!p.envase && <button className="btn" onClick={() => openChangePrice(pid)}>{multi ? 'Precios por embarque' : 'Cambiar precio'}</button>}</>}<button className="btn pri" onClick={closeModal}>Cerrar</button></div>
+      <div className="acts">{admin && <><button className="btn ghost" onClick={() => openAdjustStock(pid)}>Ajustar stock</button><button className="btn ghost" onClick={() => openEditProduct(pid)}>Editar</button>{<button className="btn" onClick={() => openChangePrice(pid)}>{multi ? 'Precios por embarque' : 'Cambiar precio'}</button>}</>}<button className="btn pri" onClick={closeModal}>Cerrar</button></div>
     </>
   );
 }
 
 export function openChangePrice(pid: string): void { openModal(() => <ChangePrice pid={pid} />); }
 function ChangePrice({ pid }: { pid: string }) {
-  const p = P(pid), unit = p.unidad === 'kg' ? '/kg' : '/gamela', open = openEmbarques(pid);
+  const p = P(pid), unit = p.unidad === 'kg' ? '/kg' : '/gamela', open = p.envase ? [] : openEmbarques(pid);
   const [general, setGeneral] = useState(String(p.precio));
   const [rows, setRows] = useState<Record<string, string>>(() => Object.fromEntries(open.map((l) => [l.id, String(lotPrice(l))])));
   const multi = open.length > 1;
@@ -98,7 +98,7 @@ function ChangePrice({ pid }: { pid: string }) {
     <>
       <h2>Cambiar precio</h2><p className="muted">{p.nombre} · actual {clp(open[0] ? lotPrice(open[0]) : p.precio)}{unit}</p>
       <div className="f"><label htmlFor="np">Nuevo precio {p.unidad === 'kg' ? 'por kg' : 'por gamela'}</label><input id="np" className="in num" type="number" inputMode="numeric" value={general} onChange={(e) => setGeneral(e.target.value)} autoFocus onFocus={(e) => e.target.select()} style={{ fontSize: 22, fontWeight: 700 }} /></div>
-      <p className="muted" style={{ fontSize: 12 }}>Aplica al stock actual y a los embarques que lleguen. Las ventas anteriores mantienen su precio.</p>
+      <p className="muted" style={{ fontSize: 12 }}>{p.envase ? 'Es lo que se cobra por cada gamela que se lleva el cliente (y lo que se descuenta por cada una que trae).' : 'Aplica al stock actual y a los embarques que lleguen.'} Las ventas anteriores mantienen su precio.</p>
       <div className="acts"><button className="btn ghost" onClick={closeModal}>Cancelar</button><button className="btn pri" onClick={() => void save()}>Guardar</button></div>
     </>
   );

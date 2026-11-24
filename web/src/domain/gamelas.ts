@@ -1,4 +1,4 @@
-import type { Lot } from '../types/model';
+import type { Expense, Lot } from '../types/model';
 import { gamId, gamProd, kgGam, P } from './catalog';
 import { ctx } from './ctx';
 import { clp, uid } from './format';
@@ -33,12 +33,12 @@ export function gamelaReturnLot(fecha: number): Lot {
   return lot;
 }
 /** Compra de gamelas: suma stock de envases y queda como gasto variable del mes. */
-export function buyGamelas(qty: number, monto: number, fecha: number, user: string, desc: string): void {
+export function buyGamelas(qty: number, monto: number, fecha: number, user: string, desc: string, extra: Partial<Expense> = {}): void {
   const p = gamProd();
   const lot: Lot = { id: uid('l'), rec: '', prod: p.id, qty, costo: Math.round(monto / qty), fecha, productor: '', modalidad: 'compra' };
   ctx.S.lots.push(lot);
   ctx.S.moves.push({ id: uid('m'), lot: lot.id, prod: p.id, tipo: 'compra gamelas', qty, user, fecha, motivo: desc || '', ref: '' });
-  ctx.S.expenses.push({ id: uid('e'), fecha, cat: 'Compra de gamelas', monto, desc: desc || '', cantidad: qty, lot: lot.id });
+  ctx.S.expenses.push({ id: uid('e'), fecha, cat: 'Compra de gamelas', monto, desc: desc || '', cantidad: qty, lot: lot.id, ...extra });
 }
 export function kgGamCount(pid: string): { entra: number; sale: number; merma: number; quedan: number } {
   const S = ctx.S;
